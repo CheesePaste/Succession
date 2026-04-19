@@ -53,11 +53,13 @@ final class PrototypeSuccessionSystem {
     private static final int CONVERSION_ANIMATION_TICKS = 28;
     private static final int BASE_COMPETITION_RADIUS = 3;
     private static final int MAX_COMPETITION_RADIUS = 8;
+    private static final float RETREAT_TRIGGER_PROGRESS = 0.42F;
+    private static final float FRONTIER_COMPETITION_MARGIN = 0.03F;
     private static final String MID_BIOME = "minecraft:plains";
     private static final String POSITIVE_TARGET_BIOME = "minecraft:forest";
     private static final String NEGATIVE_TARGET_BIOME = "minecraft:desert";
     private static final float BIOME_COMPETITION_RECOVERY = 0.60F;
-    private static final float OPPOSITION_RETREAT_MULTIPLIER = 0.85F;
+    private static final float OPPOSITION_RETREAT_MULTIPLIER = 1.35F;
     private static final int[][] CARDINAL_NEIGHBORS = new int[][] {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
     private static final Map<Long, ConversionAnimation> ACTIVE_CONVERSIONS = new HashMap<>();
     private static final Map<Long, NeighborPressure> ACTIVE_COMPETITION_PRESSURES = new HashMap<>();
@@ -220,6 +222,7 @@ final class PrototypeSuccessionSystem {
         state.setLastScore(Math.max(state.lastScore(), Math.abs(amount)));
         applyStageMarkers(level, chunkPos, state);
         tryComplete(level, chunkPos, state);
+        tryCollapse(level, chunkPos, state);
         data.setDirty();
 
         source.sendSuccess(() -> Component.literal(String.format(Locale.ROOT,
@@ -279,6 +282,7 @@ final class PrototypeSuccessionSystem {
         state.setLastScanReason(scan.reason());
 
         float rateMultiplier = assignment.deltaMultiplier();
+        CompletedFaction completedFaction = resolveCompletedFaction(level, state, chunkPos);
         if (scan.mode() == SuccessionMode.PLAINS_TO_FOREST && scan.eligible()) {
             float delta = (float) (Config.PROTOTYPE_PROGRESS_PER_SCAN.get() * scan.score() * rateMultiplier);
             logEvent(level, chunkPos, "growth_forest", "plains->forest scan produced delta={} previousProgress={} score={} reason={} forestPressure={} desertPressure={} part={} center=({}, {}) radius={} localRate={} effectiveRate={} stride={} phase={}",
@@ -299,7 +303,7 @@ final class PrototypeSuccessionSystem {
             state.setCompleted(false);
             applyStageMarkers(level, chunkPos, state);
             tryComplete(level, chunkPos, state);
-        } else if (scan.mode() == SuccessionMode.FOREST_RETREAT && state.completed() && state.progress() > 0.0F) {
+        } else if (scan.mode() == SuccessionMode.FOREST_RETREAT && completedFaction == CompletedFaction.FOREST) {
             float retreat = (float) (Config.PROTOTYPE_PROGRESS_PER_SCAN.get() * scan.score() * rateMultiplier * OPPOSITION_RETREAT_MULTIPLIER);
             logEvent(level, chunkPos, "forest_retreat", "forest retreat scan produced delta={} previousProgress={} score={} reason={} forestPressure={} desertPressure={} part={} center=({}, {}) radius={} localRate={} effectiveRate={} stride={} phase={}",
                     retreat, state.progress(), scan.score(), scan.reason(), scan.forestPressure(), scan.desertPressure(),
@@ -307,7 +311,7 @@ final class PrototypeSuccessionSystem {
                     assignment.localRate(), assignment.effectiveRate(), assignment.cycleStride(), assignment.phaseOffset());
             state.setProgress(state.progress() - retreat);
             tryCollapse(level, chunkPos, state);
-        } else if (scan.mode() == SuccessionMode.DESERT_RETREAT && state.completed() && state.progress() < 0.0F) {
+        } else if (scan.mode() == SuccessionMode.DESERT_RETREAT && completedFaction == CompletedFaction.DESERT) {
             float retreat = (float) (Config.PROTOTYPE_PROGRESS_PER_SCAN.get() * scan.score() * rateMultiplier * OPPOSITION_RETREAT_MULTIPLIER);
             logEvent(level, chunkPos, "desert_retreat", "desert retreat scan produced delta={} previousProgress={} score={} reason={} forestPressure={} desertPressure={} part={} center=({}, {}) radius={} localRate={} effectiveRate={} stride={} phase={}",
                     retreat, state.progress(), scan.score(), scan.reason(), scan.forestPressure(), scan.desertPressure(),
@@ -315,12 +319,12 @@ final class PrototypeSuccessionSystem {
                     assignment.localRate(), assignment.effectiveRate(), assignment.cycleStride(), assignment.phaseOffset());
             state.setProgress(state.progress() + retreat);
             tryCollapse(level, chunkPos, state);
-        } else if (scan.mode() == SuccessionMode.FOREST_STABLE && state.completed() && state.progress() > 0.0F) {
+        } else if (scan.mode() == SuccessionMode.FOREST_STABLE && completedFaction == CompletedFaction.FOREST) {
             float recovery = Config.PROTOTYPE_DECAY_PER_SCAN.get().floatValue() * (0.5F + scan.score() * BIOME_COMPETITION_RECOVERY) * rateMultiplier;
             logEvent(level, chunkPos, "forest_recover", "stable forest recovered by {} previousProgress={} score={} forestPressure={} desertPressure={}",
                     recovery, state.progress(), scan.score(), scan.forestPressure(), scan.desertPressure());
             state.setProgress(state.progress() + recovery);
-        } else if (scan.mode() == SuccessionMode.DESERT_STABLE && state.completed() && state.progress() < 0.0F) {
+        } else if (scan.mode() == SuccessionMode.DESERT_STABLE && completedFaction == CompletedFaction.DESERT) {
             float recovery = Config.PROTOTYPE_DECAY_PER_SCAN.get().floatValue() * (0.5F + scan.score() * BIOME_COMPETITION_RECOVERY) * rateMultiplier;
             logEvent(level, chunkPos, "desert_recover", "stable desert recovered by {} previousProgress={} score={} forestPressure={} desertPressure={}",
                     recovery, state.progress(), scan.score(), scan.forestPressure(), scan.desertPressure());
@@ -513,14 +517,16 @@ final class PrototypeSuccessionSystem {
                 continue;
             }
 
-            float distanceWeight = 1.0F - ((float) node.distance() / (float) (radius + 1));
-            float influence = Mth.clamp(sizeFactor * distanceWeight * 0.42F, 0.0F, 1.2F);
-            float[] values = accumulated.get(nodeKey);
-            if (values != null) {
-                if (component.faction() == CompletedFaction.FOREST) {
-                    values[0] += influence;
-                } else {
-                    values[1] += influence;
+            if (node.distance() > 0) {
+                float distanceWeight = 1.0F - ((float) node.distance() / (float) (radius + 1));
+                float influence = Mth.clamp(sizeFactor * distanceWeight * 0.42F, 0.0F, 1.2F);
+                float[] values = accumulated.get(nodeKey);
+                if (values != null) {
+                    if (component.faction() == CompletedFaction.FOREST) {
+                        values[0] += influence;
+                    } else {
+                        values[1] += influence;
+                    }
                 }
             }
 
@@ -642,20 +648,20 @@ final class PrototypeSuccessionSystem {
         }
 
         if (isForest) {
-            float forestSupport = Mth.clamp(treeRatio * 0.52F + lushRatio * 0.18F + waterRatio * 0.10F + pressure.forestPressure() * 0.20F, 0.0F, 1.0F);
-            float desertThreat = Mth.clamp((1.0F - treeRatio) * 0.36F + pressure.desertPressure() * 0.42F - pressure.forestPressure() * 0.10F + 0.18F, 0.0F, 1.0F);
-            if (desertThreat > forestSupport + 0.10F) {
-                return new ScanResult(SuccessionMode.FOREST_RETREAT, true, desertThreat, biomeId, surface, "desert_pressure_on_forest", pressure.forestPressure(), pressure.desertPressure());
+            float forestSupport = Mth.clamp(0.12F + pressure.forestPressure() * 0.78F + treeRatio * 0.07F + lushRatio * 0.03F, 0.0F, 1.0F);
+            float desertThreat = Mth.clamp(0.10F + pressure.desertPressure() * 0.82F + (1.0F - treeRatio) * 0.05F + (1.0F - lushRatio) * 0.03F, 0.0F, 1.0F);
+            if (desertThreat > forestSupport + FRONTIER_COMPETITION_MARGIN) {
+                return new ScanResult(SuccessionMode.FOREST_RETREAT, true, desertThreat, biomeId, surface, "desert_frontier_pressure", pressure.forestPressure(), pressure.desertPressure());
             }
-            return new ScanResult(SuccessionMode.FOREST_STABLE, false, forestSupport, biomeId, surface, "forest_holding_ground", pressure.forestPressure(), pressure.desertPressure());
+            return new ScanResult(SuccessionMode.FOREST_STABLE, false, forestSupport, biomeId, surface, "forest_frontier_hold", pressure.forestPressure(), pressure.desertPressure());
         }
 
-        float desertSupport = Mth.clamp((groundState.is(Blocks.SAND) ? 0.45F : 0.18F) + pressure.desertPressure() * 0.30F + (1.0F - waterRatio) * 0.10F, 0.0F, 1.0F);
-        float forestThreat = Mth.clamp(pressure.forestPressure() * 0.40F + waterRatio * 0.12F + lushRatio * 0.12F - pressure.desertPressure() * 0.10F + 0.12F, 0.0F, 1.0F);
-        if (forestThreat > desertSupport + 0.10F) {
-            return new ScanResult(SuccessionMode.DESERT_RETREAT, true, forestThreat, biomeId, surface, "forest_pressure_on_desert", pressure.forestPressure(), pressure.desertPressure());
+        float desertSupport = Mth.clamp(0.12F + pressure.desertPressure() * 0.78F + (groundState.is(Blocks.SAND) ? 0.06F : 0.02F) + (1.0F - waterRatio) * 0.02F, 0.0F, 1.0F);
+        float forestThreat = Mth.clamp(0.10F + pressure.forestPressure() * 0.82F + waterRatio * 0.05F + lushRatio * 0.03F, 0.0F, 1.0F);
+        if (forestThreat > desertSupport + FRONTIER_COMPETITION_MARGIN) {
+            return new ScanResult(SuccessionMode.DESERT_RETREAT, true, forestThreat, biomeId, surface, "forest_frontier_pressure", pressure.forestPressure(), pressure.desertPressure());
         }
-        return new ScanResult(SuccessionMode.DESERT_STABLE, false, desertSupport, biomeId, surface, "desert_holding_ground", pressure.forestPressure(), pressure.desertPressure());
+        return new ScanResult(SuccessionMode.DESERT_STABLE, false, desertSupport, biomeId, surface, "desert_frontier_hold", pressure.forestPressure(), pressure.desertPressure());
     }
 
     private static NeighborPressure sampleNeighborPressure(ServerLevel level, ChunkPos chunkPos) {
@@ -801,12 +807,13 @@ final class PrototypeSuccessionSystem {
             return;
         }
 
-        if (state.progress() <= 0.0F && level.getBiome(getSurfaceCenter(level, chunkPos)).is(Biomes.FOREST)) {
+        CompletedFaction completedFaction = resolveCompletedFaction(level, state, chunkPos);
+        if (completedFaction == CompletedFaction.FOREST && state.progress() <= RETREAT_TRIGGER_PROGRESS) {
             logEvent(level, chunkPos, "collapse_queue", "forest pressure dropped to {} and queued retreat animation {} -> {} over {} ticks",
                     state.progress(), POSITIVE_TARGET_BIOME, MID_BIOME, CONVERSION_ANIMATION_TICKS);
             state.setLastScanReason("animating_forest_retreat");
             queueConversionAnimation(level, chunkPos, ConversionKind.FOREST_TO_PLAINS);
-        } else if (state.progress() >= 0.0F && level.getBiome(getSurfaceCenter(level, chunkPos)).is(Biomes.DESERT)) {
+        } else if (completedFaction == CompletedFaction.DESERT && state.progress() >= -RETREAT_TRIGGER_PROGRESS) {
             logEvent(level, chunkPos, "collapse_queue", "desert pressure dropped to {} and queued retreat animation {} -> {} over {} ticks",
                     state.progress(), NEGATIVE_TARGET_BIOME, MID_BIOME, CONVERSION_ANIMATION_TICKS);
             state.setLastScanReason("animating_desert_retreat");
