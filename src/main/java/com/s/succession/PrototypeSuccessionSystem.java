@@ -3,7 +3,9 @@ package com.s.succession;
 import com.mojang.brigadier.arguments.FloatArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -49,12 +51,16 @@ final class PrototypeSuccessionSystem {
     private static final int MAX_PART_RADIUS_CHUNKS = 7;
     private static final float PART_RATE_VARIATION = 0.12F;
     private static final int CONVERSION_ANIMATION_TICKS = 28;
+    private static final int BASE_COMPETITION_RADIUS = 3;
+    private static final int MAX_COMPETITION_RADIUS = 8;
     private static final String MID_BIOME = "minecraft:plains";
     private static final String POSITIVE_TARGET_BIOME = "minecraft:forest";
     private static final String NEGATIVE_TARGET_BIOME = "minecraft:desert";
     private static final float BIOME_COMPETITION_RECOVERY = 0.60F;
     private static final float OPPOSITION_RETREAT_MULTIPLIER = 0.85F;
+    private static final int[][] CARDINAL_NEIGHBORS = new int[][] {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
     private static final Map<Long, ConversionAnimation> ACTIVE_CONVERSIONS = new HashMap<>();
+    private static final Map<Long, NeighborPressure> ACTIVE_COMPETITION_PRESSURES = new HashMap<>();
 
     private PrototypeSuccessionSystem() {
     }
@@ -85,7 +91,8 @@ final class PrototypeSuccessionSystem {
 
         long gameTime = overworld.getGameTime();
         tickActiveConversions(overworld);
-        if (gameTime % Config.PROTOTYPE_SCAN_INTERVAL_TICKS.get() != 0L) {
+        int effectiveScanInterval = getEffectiveScanIntervalTicks();
+        if (gameTime % effectiveScanInterval != 0L) {
             return;
         }
 
@@ -118,10 +125,12 @@ final class PrototypeSuccessionSystem {
         }
 
         if (loadedChunks.isEmpty()) {
+            ACTIVE_COMPETITION_PRESSURES.clear();
             return;
         }
 
-        long scanCycle = gameTime / Config.PROTOTYPE_SCAN_INTERVAL_TICKS.get();
+        rebuildCompetitionPressureMap(overworld, loadedChunks);
+        long scanCycle = gameTime / effectiveScanInterval;
         PartLayout partLayout = buildPartLayout(overworld, loadedChunks, scanCycle);
         for (ChunkPos loadedChunkPos : loadedChunks) {
             PartAssignment assignment = partLayout.assignmentFor(loadedChunkPos);
@@ -415,6 +424,141 @@ final class PrototypeSuccessionSystem {
         return Mth.clamp(Mth.ceil(0.85F / Math.max(0.1F, effectiveRate)), 2, 8);
     }
 
+    private static int getEffectiveScanIntervalTicks() {
+        float globalRate = Mth.clamp(Config.PROTOTYPE_GLOBAL_RATE.get().floatValue(), 0.1F, 3.0F);
+        return Mth.clamp(Math.round(Config.PROTOTYPE_SCAN_INTERVAL_TICKS.get() / globalRate), 20, 24000);
+    }
+
+    private static void rebuildCompetitionPressureMap(ServerLevel level, List<ChunkPos> loadedChunks) {
+        ACTIVE_COMPETITION_PRESSURES.clear();
+        if (loadedChunks.isEmpty()) {
+            return;
+        }
+
+        Map<Long, float[]> accumulated = new HashMap<>();
+        Set<Long> loadedKeys = new HashSet<>();
+        Map<Long, ChunkPos> loadedPositions = new HashMap<>();
+        for (ChunkPos chunkPos : loadedChunks) {
+            long key = chunkPos.toLong();
+            loadedKeys.add(key);
+            loadedPositions.put(key, chunkPos);
+            accumulated.put(key, new float[] {0.0F, 0.0F});
+        }
+
+        PrototypeSuccessionSavedData data = PrototypeSuccessionSavedData.get(level);
+        Set<Long> visited = new HashSet<>();
+        for (ChunkPos chunkPos : loadedChunks) {
+            long key = chunkPos.toLong();
+            if (!visited.add(key)) {
+                continue;
+            }
+
+            CompletedFaction faction = resolveCompletedFaction(level, data.get(chunkPos), chunkPos);
+            if (faction == CompletedFaction.NONE) {
+                continue;
+            }
+
+            CompetitionComponent component = collectCompetitionComponent(level, chunkPos, faction, loadedKeys, visited, data);
+            applyCompetitionComponentPressure(component, loadedKeys, loadedPositions, accumulated);
+        }
+
+        for (Map.Entry<Long, float[]> entry : accumulated.entrySet()) {
+            float[] values = entry.getValue();
+            ACTIVE_COMPETITION_PRESSURES.put(entry.getKey(), new NeighborPressure(Mth.clamp(values[0], 0.0F, 1.0F), Mth.clamp(values[1], 0.0F, 1.0F)));
+        }
+    }
+
+    private static CompetitionComponent collectCompetitionComponent(ServerLevel level, ChunkPos start, CompletedFaction faction, Set<Long> loadedKeys, Set<Long> visited, PrototypeSuccessionSavedData data) {
+        List<ChunkPos> members = new ArrayList<>();
+        Deque<ChunkPos> queue = new ArrayDeque<>();
+        queue.add(start);
+
+        while (!queue.isEmpty()) {
+            ChunkPos current = queue.removeFirst();
+            members.add(current);
+
+            for (int[] offset : CARDINAL_NEIGHBORS) {
+                ChunkPos neighbor = new ChunkPos(current.x + offset[0], current.z + offset[1]);
+                long neighborKey = neighbor.toLong();
+                if (!loadedKeys.contains(neighborKey) || visited.contains(neighborKey)) {
+                    continue;
+                }
+
+                if (resolveCompletedFaction(level, data.get(neighbor), neighbor) == faction) {
+                    visited.add(neighborKey);
+                    queue.addLast(neighbor);
+                }
+            }
+        }
+
+        return new CompetitionComponent(faction, members);
+    }
+
+    private static void applyCompetitionComponentPressure(CompetitionComponent component, Set<Long> loadedKeys, Map<Long, ChunkPos> loadedPositions, Map<Long, float[]> accumulated) {
+        int radius = Mth.clamp(BASE_COMPETITION_RADIUS + component.members().size() / 4, BASE_COMPETITION_RADIUS, MAX_COMPETITION_RADIUS);
+        float sizeFactor = Mth.clamp(0.45F + component.members().size() * 0.10F, 0.45F, 2.25F);
+        Deque<PressureNode> queue = new ArrayDeque<>();
+        Map<Long, Integer> bestDistances = new HashMap<>();
+
+        for (ChunkPos member : component.members()) {
+            long key = member.toLong();
+            queue.addLast(new PressureNode(member, 0));
+            bestDistances.put(key, 0);
+        }
+
+        while (!queue.isEmpty()) {
+            PressureNode node = queue.removeFirst();
+            long nodeKey = node.chunkPos().toLong();
+            if (node.distance() > radius || node.distance() != bestDistances.getOrDefault(nodeKey, Integer.MAX_VALUE)) {
+                continue;
+            }
+
+            float distanceWeight = 1.0F - ((float) node.distance() / (float) (radius + 1));
+            float influence = Mth.clamp(sizeFactor * distanceWeight * 0.42F, 0.0F, 1.2F);
+            float[] values = accumulated.get(nodeKey);
+            if (values != null) {
+                if (component.faction() == CompletedFaction.FOREST) {
+                    values[0] += influence;
+                } else {
+                    values[1] += influence;
+                }
+            }
+
+            if (node.distance() >= radius) {
+                continue;
+            }
+
+            for (int[] offset : CARDINAL_NEIGHBORS) {
+                ChunkPos neighbor = new ChunkPos(node.chunkPos().x + offset[0], node.chunkPos().z + offset[1]);
+                long neighborKey = neighbor.toLong();
+                if (!loadedKeys.contains(neighborKey)) {
+                    continue;
+                }
+
+                int nextDistance = node.distance() + 1;
+                if (nextDistance < bestDistances.getOrDefault(neighborKey, Integer.MAX_VALUE)) {
+                    bestDistances.put(neighborKey, nextDistance);
+                    queue.addLast(new PressureNode(neighbor, nextDistance));
+                }
+            }
+        }
+    }
+
+    private static CompletedFaction resolveCompletedFaction(ServerLevel level, PrototypeChunkState state, ChunkPos chunkPos) {
+        if (state == null || !state.completed()) {
+            return CompletedFaction.NONE;
+        }
+
+        BlockPos surface = getSurfaceCenter(level, chunkPos);
+        if (level.getBiome(surface).is(Biomes.FOREST) || state.progress() > 0.0F) {
+            return CompletedFaction.FOREST;
+        }
+        if (level.getBiome(surface).is(Biomes.DESERT) || state.progress() < 0.0F) {
+            return CompletedFaction.DESERT;
+        }
+        return CompletedFaction.NONE;
+    }
+
     private static PartProfile selectPart(List<PartProfile> parts, ChunkPos chunkPos) {
         PartProfile selected = parts.get(0);
         double bestScore = Double.MAX_VALUE;
@@ -435,6 +579,7 @@ final class PrototypeSuccessionSystem {
         String biomeId = level.getBiome(surface).unwrapKey()
                 .map(key -> key.location().toString())
                 .orElse("unknown");
+        PrototypeChunkState currentState = PrototypeSuccessionSavedData.get(level).get(chunkPos);
         NeighborPressure pressure = sampleNeighborPressure(level, chunkPos);
         boolean isPlains = level.getBiome(surface).is(Biomes.PLAINS);
         boolean isForest = level.getBiome(surface).is(Biomes.FOREST);
@@ -486,7 +631,7 @@ final class PrototypeSuccessionSystem {
         float treeRatio = samples == 0 ? 0.0F : Mth.clamp((float) treeSamples / (float) samples, 0.0F, 1.0F);
         float waterRatio = samples == 0 ? 0.0F : Mth.clamp((float) waterSamples / (float) samples, 0.0F, 1.0F);
         if (isPlains) {
-            BranchRoll branchRoll = rollPlainDirection(level, chunkPos, pressure);
+            BranchRoll branchRoll = rollPlainDirection(level, chunkPos, pressure, currentState == null ? 0.0F : currentState.progress());
             if (!branchRoll.active()) {
                 return new ScanResult(SuccessionMode.NONE, false, branchRoll.score(), biomeId, surface, "probability_hold", pressure.forestPressure(), pressure.desertPressure());
             }
@@ -514,8 +659,9 @@ final class PrototypeSuccessionSystem {
     }
 
     private static NeighborPressure sampleNeighborPressure(ServerLevel level, ChunkPos chunkPos) {
-        int forestNeighbors = 0;
-        int desertNeighbors = 0;
+        NeighborPressure cached = ACTIVE_COMPETITION_PRESSURES.getOrDefault(chunkPos.toLong(), new NeighborPressure(0.0F, 0.0F));
+        float forestNeighbors = cached.forestPressure();
+        float desertNeighbors = cached.desertPressure();
         int totalNeighbors = 0;
         PrototypeSuccessionSavedData data = PrototypeSuccessionSavedData.get(level);
 
@@ -532,26 +678,34 @@ final class PrototypeSuccessionSystem {
 
                 totalNeighbors++;
                 BlockPos neighborSurface = getSurfaceCenter(level, neighborPos);
+                PrototypeChunkState neighborState = data.get(neighborPos);
                 if (level.getBiome(neighborSurface).is(Biomes.FOREST)) {
-                    PrototypeChunkState neighborState = data.get(neighborPos);
                     if (neighborState != null && neighborState.completed()) {
-                        forestNeighbors++;
+                        forestNeighbors += 1.0F;
+                    } else if (neighborState != null && neighborState.progress() > 0.0F) {
+                        forestNeighbors += 0.35F + Math.abs(neighborState.progress()) * 0.35F;
                     }
                 } else if (level.getBiome(neighborSurface).is(Biomes.DESERT)) {
-                    PrototypeChunkState neighborState = data.get(neighborPos);
                     if (neighborState != null && neighborState.completed()) {
-                        desertNeighbors++;
+                        desertNeighbors += 1.0F;
+                    } else if (neighborState != null && neighborState.progress() < 0.0F) {
+                        desertNeighbors += 0.35F + Math.abs(neighborState.progress()) * 0.35F;
+                    }
+                } else if (neighborState != null) {
+                    if (neighborState.progress() > 0.0F) {
+                        forestNeighbors += 0.20F + Math.abs(neighborState.progress()) * 0.25F;
+                    } else if (neighborState.progress() < 0.0F) {
+                        desertNeighbors += 0.20F + Math.abs(neighborState.progress()) * 0.25F;
                     }
                 }
             }
         }
 
-        if (totalNeighbors <= 0) {
-            return new NeighborPressure(0.0F, 0.0F);
+        if (totalNeighbors > 0) {
+            forestNeighbors += Mth.clamp(forestNeighbors / (float) totalNeighbors, 0.0F, 0.35F);
+            desertNeighbors += Mth.clamp(desertNeighbors / (float) totalNeighbors, 0.0F, 0.35F);
         }
-        return new NeighborPressure(
-                Mth.clamp((float) forestNeighbors / (float) totalNeighbors, 0.0F, 1.0F),
-                Mth.clamp((float) desertNeighbors / (float) totalNeighbors, 0.0F, 1.0F));
+        return new NeighborPressure(Mth.clamp(forestNeighbors, 0.0F, 1.0F), Mth.clamp(desertNeighbors, 0.0F, 1.0F));
     }
 
     private static boolean containsNearbyTree(ServerLevel level, BlockPos center, int radius) {
@@ -1529,18 +1683,19 @@ final class PrototypeSuccessionSystem {
         return 0.0F;
     }
 
-    private static BranchRoll rollPlainDirection(ServerLevel level, ChunkPos chunkPos, NeighborPressure pressure) {
-        long cycle = level.getGameTime() / Config.PROTOTYPE_SCAN_INTERVAL_TICKS.get();
+    private static BranchRoll rollPlainDirection(ServerLevel level, ChunkPos chunkPos, NeighborPressure pressure, float currentProgress) {
+        long cycle = level.getGameTime() / getEffectiveScanIntervalTicks();
         RandomSource random = RandomSource.create(level.getSeed() ^ chunkPos.toLong() ^ (cycle * 1_315_423_911L));
         float bias = ((chunkPos.x * 37 + chunkPos.z * 17) & 15) / 15.0F * 0.30F - 0.15F;
-        float activityChance = Mth.clamp(0.45F + Math.max(pressure.forestPressure(), pressure.desertPressure()) * 0.35F + Math.abs(bias) * 0.20F, 0.20F, 0.90F);
+        float inertia = Mth.clamp(currentProgress, -1.0F, 1.0F);
+        float activityChance = Mth.clamp(0.68F + Math.max(pressure.forestPressure(), pressure.desertPressure()) * 0.25F + Math.abs(inertia) * 0.20F, 0.55F, 0.98F);
         if (random.nextFloat() > activityChance) {
             return new BranchRoll(false, 0, activityChance * 0.45F);
         }
 
-        float forestWeight = Mth.clamp(0.5F + (pressure.forestPressure() - pressure.desertPressure()) * 0.45F + bias, 0.05F, 0.95F);
+        float forestWeight = Mth.clamp(0.5F + (pressure.forestPressure() - pressure.desertPressure()) * 0.40F + bias + inertia * 0.60F, 0.03F, 0.97F);
         int direction = random.nextFloat() < forestWeight ? 1 : -1;
-        float score = Mth.clamp(activityChance * (0.70F + Math.abs(forestWeight - 0.5F) * 0.90F), 0.05F, 1.0F);
+        float score = Mth.clamp(activityChance * (0.85F + Math.abs(forestWeight - 0.5F) * 0.95F + Math.abs(inertia) * 0.35F), 0.18F, 1.0F);
         return new BranchRoll(true, direction, score);
     }
 
@@ -1631,6 +1786,12 @@ final class PrototypeSuccessionSystem {
         }
     }
 
+    private enum CompletedFaction {
+        NONE,
+        FOREST,
+        DESERT
+    }
+
     private enum SuccessionMode {
         NONE,
         PLAINS_TO_FOREST,
@@ -1693,6 +1854,12 @@ final class PrototypeSuccessionSystem {
     }
 
     private record NeighborPressure(float forestPressure, float desertPressure) {
+    }
+
+    private record CompetitionComponent(CompletedFaction faction, List<ChunkPos> members) {
+    }
+
+    private record PressureNode(ChunkPos chunkPos, int distance) {
     }
 
     private record ScanResult(SuccessionMode mode, boolean eligible, float score, String biomeId, BlockPos surface, String reason, float forestPressure, float desertPressure) {
