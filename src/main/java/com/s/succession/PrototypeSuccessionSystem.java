@@ -43,11 +43,13 @@ final class PrototypeSuccessionSystem {
     private static final int MAX_FILL_HEIGHT_PER_PASS = 64;
     private static final int TRACKED_CHUNK_MARGIN = 1;
     private static final int TARGET_CHUNKS_PER_PART = 12;
-    private static final int MIN_PART_RADIUS_CHUNKS = 2;
-    private static final int MAX_PART_RADIUS_CHUNKS = 5;
+    private static final int MIN_PART_RADIUS_CHUNKS = 3;
+    private static final int MAX_PART_RADIUS_CHUNKS = 7;
     private static final float PART_RATE_VARIATION = 0.12F;
+    private static final int CONVERSION_ANIMATION_TICKS = 28;
     private static final String SOURCE_BIOME = "minecraft:plains";
     private static final String TARGET_BIOME = "minecraft:forest";
+    private static final Map<Long, ConversionAnimation> ACTIVE_CONVERSIONS = new HashMap<>();
 
     private PrototypeSuccessionSystem() {
     }
@@ -77,6 +79,7 @@ final class PrototypeSuccessionSystem {
         }
 
         long gameTime = overworld.getGameTime();
+        tickActiveConversions(overworld);
         if (gameTime % Config.PROTOTYPE_SCAN_INTERVAL_TICKS.get() != 0L) {
             return;
         }
@@ -217,6 +220,7 @@ final class PrototypeSuccessionSystem {
         ChunkPos chunkPos = player.chunkPosition();
         PrototypeSuccessionSavedData data = PrototypeSuccessionSavedData.get(level);
         logEvent(level, chunkPos, "reset", "reset requested by command; removing stored state and restoring biome if enabled");
+        ACTIVE_CONVERSIONS.remove(chunkPos.toLong());
         data.remove(chunkPos);
         if (Config.ENABLE_BIOME_SWAP.get()) {
             runFillBiome(level, chunkPos, SOURCE_BIOME, TARGET_BIOME);
@@ -235,6 +239,13 @@ final class PrototypeSuccessionSystem {
     }
 
     private static ProgressResult progressChunk(ServerLevel level, ChunkPos chunkPos, boolean automaticTick, PartAssignment assignment) {
+        if (ACTIVE_CONVERSIONS.containsKey(chunkPos.toLong())) {
+            return new ProgressResult(false, String.format(Locale.ROOT,
+                    "[Succession] chunk (%d,%d) is animating conversion outward from the center.",
+                    chunkPos.x,
+                    chunkPos.z));
+        }
+
         PrototypeSuccessionSavedData data = PrototypeSuccessionSavedData.get(level);
         PrototypeChunkState state = data.getOrCreate(chunkPos);
         ScanResult scan = scanChunk(level, chunkPos);
@@ -482,31 +493,28 @@ final class PrototypeSuccessionSystem {
     }
 
     private static void tryComplete(ServerLevel level, ChunkPos chunkPos, PrototypeChunkState state) {
-        if (state.completed() || state.progress() < 1.0F) {
+        if (state.completed() || state.progress() < 1.0F || ACTIVE_CONVERSIONS.containsKey(chunkPos.toLong())) {
             return;
         }
 
-        logEvent(level, chunkPos, "completion", "progress reached {} and will attempt biome conversion {} -> {}", state.progress(), SOURCE_BIOME, TARGET_BIOME);
-        boolean biomeSwapSucceeded = !Config.ENABLE_BIOME_SWAP.get() || runFillBiome(level, chunkPos, TARGET_BIOME, SOURCE_BIOME);
-        if (!biomeSwapSucceeded) {
-            state.setProgress(0.95F);
-            state.setLastScanReason("fillbiome_failed");
-            logEvent(level, chunkPos, "completion_failed", "biome conversion failed; progress rolled back to {}", state.progress());
-            return;
-        }
-
-        if (Config.ENABLE_VISUAL_MARKERS.get()) {
-            logEvent(level, chunkPos, "completion", "decorating completed chunk with randomized forest cover");
-            decorateCompletedChunk(level, chunkPos);
-        }
-        state.setCompleted(true);
-        state.setProgress(1.0F);
-        state.setLastScanReason("converted_to_forest");
-
-        logEvent(level, chunkPos, "completed", "prototype path completed successfully; biome should now be {}", TARGET_BIOME);
+        logEvent(level, chunkPos, "completion_queue", "progress reached {} and queued an outward conversion animation {} -> {} over {} ticks",
+                state.progress(),
+                SOURCE_BIOME,
+                TARGET_BIOME,
+                CONVERSION_ANIMATION_TICKS);
+        state.setLastScanReason("animating_conversion");
+        queueConversionAnimation(level, chunkPos);
     }
 
     private static boolean runFillBiome(ServerLevel level, ChunkPos chunkPos, String targetBiome, String replaceBiome) {
+        boolean changed = runFillBiomeArea(level, chunkPos, targetBiome, replaceBiome, chunkPos.getMinBlockX(), chunkPos.getMaxBlockX(), chunkPos.getMinBlockZ(), chunkPos.getMaxBlockZ(), "fillbiome");
+        if (changed) {
+            resendChunkBiomes(level, chunkPos);
+        }
+        return changed;
+    }
+
+    private static boolean runFillBiomeArea(ServerLevel level, ChunkPos chunkPos, String targetBiome, String replaceBiome, int minX, int maxX, int minZ, int maxZ, String eventPrefix) {
         int minY = level.getMinBuildHeight();
         int maxY = level.getMaxBuildHeight() - 1;
         var biomeRegistry = level.registryAccess().lookupOrThrow(Registries.BIOME);
@@ -516,13 +524,22 @@ final class PrototypeSuccessionSystem {
         var chunk = level.getChunk(chunkPos.x, chunkPos.z);
         int changedCells = 0;
 
-        logEvent(level, chunkPos, "fillbiome_start", "starting segmented biome conversion {} -> {} from y={} to y={} with sliceHeight={}", replaceBiome, targetBiome, minY, maxY, MAX_FILL_HEIGHT_PER_PASS);
+        logEvent(level, chunkPos, eventPrefix + "_start", "starting segmented biome conversion {} -> {} within x={}..{} z={}..{} from y={} to y={} with sliceHeight={}",
+                replaceBiome,
+                targetBiome,
+                minX,
+                maxX,
+                minZ,
+                maxZ,
+                minY,
+                maxY,
+                MAX_FILL_HEIGHT_PER_PASS);
         for (int sliceMinY = minY; sliceMinY <= maxY; sliceMinY += MAX_FILL_HEIGHT_PER_PASS) {
             int sliceMaxY = Math.min(sliceMinY + MAX_FILL_HEIGHT_PER_PASS - 1, maxY);
             var result = FillBiomeCommand.fill(
                     level,
-                    new BlockPos(chunkPos.getMinBlockX(), sliceMinY, chunkPos.getMinBlockZ()),
-                    new BlockPos(chunkPos.getMaxBlockX(), sliceMaxY, chunkPos.getMaxBlockZ()),
+                    new BlockPos(minX, sliceMinY, minZ),
+                    new BlockPos(maxX, sliceMaxY, maxZ),
                     targetHolder,
                     holder -> holder.is(replaceKey),
                     output -> {
@@ -530,28 +547,243 @@ final class PrototypeSuccessionSystem {
 
             if (result.right().isPresent()) {
                 CommandSyntaxException exception = result.right().get();
-                logEvent(level, chunkPos, "fillbiome_slice_failed", "slice y={}..{} failed with {}", sliceMinY, sliceMaxY, exception.getMessage());
+                logEvent(level, chunkPos, eventPrefix + "_slice_failed", "slice y={}..{} within x={}..{} z={}..{} failed with {}",
+                        sliceMinY,
+                        sliceMaxY,
+                        minX,
+                        maxX,
+                        minZ,
+                        maxZ,
+                        exception.getMessage());
                 return false;
             }
 
             int sliceChanged = result.left().orElse(0);
             changedCells += sliceChanged;
-            logEvent(level, chunkPos, "fillbiome_slice", "slice y={}..{} converted {} biome cells", sliceMinY, sliceMaxY, sliceChanged);
+            logEvent(level, chunkPos, eventPrefix + "_slice", "slice y={}..{} within x={}..{} z={}..{} converted {} biome cells",
+                    sliceMinY,
+                    sliceMaxY,
+                    minX,
+                    maxX,
+                    minZ,
+                    maxZ,
+                    sliceChanged);
         }
 
         if (changedCells <= 0) {
-            logEvent(level, chunkPos, "fillbiome_noop", "segmented biome conversion finished but changed 0 biome cells");
+            logEvent(level, chunkPos, eventPrefix + "_noop", "segmented biome conversion within x={}..{} z={}..{} finished but changed 0 biome cells", minX, maxX, minZ, maxZ);
             return false;
         }
 
         chunk.setUnsaved(true);
-        level.getChunkSource().chunkMap.resendBiomesForChunks(java.util.List.of(chunk));
-        logEvent(level, chunkPos, "fillbiome_done", "segmented biome conversion completed with {} changed biome cells and resend triggered", changedCells);
+        logEvent(level, chunkPos, eventPrefix + "_done", "segmented biome conversion within x={}..{} z={}..{} completed with {} changed biome cells", minX, maxX, minZ, maxZ, changedCells);
         return true;
+    }
+
+    private static void queueConversionAnimation(ServerLevel level, ChunkPos chunkPos) {
+        long chunkKey = chunkPos.toLong();
+        if (ACTIVE_CONVERSIONS.containsKey(chunkKey)) {
+            return;
+        }
+
+        int centerX = chunkPos.getMinBlockX() + 8;
+        int centerZ = chunkPos.getMinBlockZ() + 8;
+        ConversionAnimation animation = new ConversionAnimation(chunkPos, centerX, centerZ, 8, 0, 0);
+        ACTIVE_CONVERSIONS.put(chunkKey, animation);
+        logEvent(level, chunkPos, "conversion_queued", "queued conversion animation from center ({}, {}) with maxLayer={} over {} ticks", centerX, centerZ, animation.maxLayer(), CONVERSION_ANIMATION_TICKS);
+    }
+
+    private static void tickActiveConversions(ServerLevel level) {
+        if (ACTIVE_CONVERSIONS.isEmpty()) {
+            return;
+        }
+
+        List<Long> finishedKeys = new ArrayList<>();
+        for (Map.Entry<Long, ConversionAnimation> entry : ACTIVE_CONVERSIONS.entrySet()) {
+            AnimationTickResult tickResult = tickConversionAnimation(level, entry.getValue());
+            if (tickResult.finished()) {
+                finishedKeys.add(entry.getKey());
+            } else if (tickResult.updatedAnimation() != null) {
+                entry.setValue(tickResult.updatedAnimation());
+            }
+        }
+
+        for (Long finishedKey : finishedKeys) {
+            ACTIVE_CONVERSIONS.remove(finishedKey);
+        }
+    }
+
+    private static AnimationTickResult tickConversionAnimation(ServerLevel level, ConversionAnimation animation) {
+        ChunkPos chunkPos = animation.chunkPos();
+        PrototypeSuccessionSavedData data = PrototypeSuccessionSavedData.get(level);
+        PrototypeChunkState state = data.get(chunkPos);
+        if (state == null) {
+            logEvent(level, chunkPos, "conversion_cancelled", "animation cancelled because chunk state no longer exists");
+            return AnimationTickResult.done();
+        }
+
+        int nextElapsedTick = animation.elapsedTicks() + 1;
+        int targetLayer = Mth.clamp((nextElapsedTick * (animation.maxLayer() + 1)) / CONVERSION_ANIMATION_TICKS, 0, animation.maxLayer());
+        boolean biomeChangedThisTick = false;
+        int surfaceChangesThisTick = 0;
+        int processedLayers = 0;
+        int nextLayer = animation.nextLayer();
+
+        while (nextLayer <= targetLayer) {
+            LayerResult layerResult = processConversionLayer(level, animation, nextLayer);
+            if (!layerResult.success()) {
+                state.setProgress(0.95F);
+                state.setLastScanReason("fillbiome_failed");
+                data.setDirty();
+                logEvent(level, chunkPos, "conversion_failed", "conversion layer {} failed; progress rolled back to {}", nextLayer, state.progress());
+                return AnimationTickResult.done();
+            }
+
+            biomeChangedThisTick |= layerResult.biomeChanged();
+            surfaceChangesThisTick += layerResult.surfaceChanges();
+            processedLayers++;
+            nextLayer++;
+        }
+
+        if (biomeChangedThisTick) {
+            resendChunkBiomes(level, chunkPos);
+        }
+
+        animation = animation.withProgress(nextLayer, nextElapsedTick, processedLayers == 0 ? animation.lastAnimatedLayer() : nextLayer - 1);
+        state.setLastScanReason("animating_conversion");
+        data.setDirty();
+
+        logEvent(level, chunkPos, "conversion_tick", "animation tick {}/{} processedLayers={} currentLayer={} biomeChanged={} surfaceChanges={}",
+                animation.elapsedTicks(),
+                CONVERSION_ANIMATION_TICKS,
+                processedLayers,
+                animation.lastAnimatedLayer(),
+                biomeChangedThisTick,
+                surfaceChangesThisTick);
+
+        if (animation.elapsedTicks() < CONVERSION_ANIMATION_TICKS && animation.nextLayer() <= animation.maxLayer()) {
+            return AnimationTickResult.running(animation);
+        }
+
+        if (Config.ENABLE_VISUAL_MARKERS.get()) {
+            logEvent(level, chunkPos, "conversion_finish_decorate", "final animation pass reached edge; applying forest re-decoration");
+            decorateCompletedChunk(level, chunkPos);
+        }
+
+        state.setCompleted(true);
+        state.setProgress(1.0F);
+        state.setLastScanReason("converted_to_forest");
+        data.setDirty();
+        logEvent(level, chunkPos, "conversion_completed", "outward conversion animation completed successfully; biome should now be {}", TARGET_BIOME);
+        return AnimationTickResult.done();
+    }
+
+    private static LayerResult processConversionLayer(ServerLevel level, ConversionAnimation animation, int layer) {
+        ChunkPos chunkPos = animation.chunkPos();
+        int minChunkX = chunkPos.getMinBlockX();
+        int maxChunkX = chunkPos.getMaxBlockX();
+        int minChunkZ = chunkPos.getMinBlockZ();
+        int maxChunkZ = chunkPos.getMaxBlockZ();
+        int minX = Math.max(minChunkX, animation.centerX() - layer);
+        int maxX = Math.min(maxChunkX, animation.centerX() + layer);
+        int minZ = Math.max(minChunkZ, animation.centerZ() - layer);
+        int maxZ = Math.min(maxChunkZ, animation.centerZ() + layer);
+        boolean biomeChanged = false;
+
+        logEvent(level, chunkPos, "conversion_layer", "processing outward layer {} with bounds x={}..{} z={}..{}", layer, minX, maxX, minZ, maxZ);
+        if (Config.ENABLE_BIOME_SWAP.get()) {
+            if (layer == 0) {
+                boolean stripChanged = runFillBiomeArea(level, chunkPos, TARGET_BIOME, SOURCE_BIOME, minX, maxX, minZ, maxZ, "fillbiome_layer_" + layer);
+                biomeChanged |= stripChanged;
+            } else {
+                biomeChanged |= runFillBiomeArea(level, chunkPos, TARGET_BIOME, SOURCE_BIOME, minX, maxX, minZ, minZ, "fillbiome_layer_" + layer + "_north");
+                biomeChanged |= runFillBiomeArea(level, chunkPos, TARGET_BIOME, SOURCE_BIOME, minX, maxX, maxZ, maxZ, "fillbiome_layer_" + layer + "_south");
+                if (minZ + 1 <= maxZ - 1) {
+                    biomeChanged |= runFillBiomeArea(level, chunkPos, TARGET_BIOME, SOURCE_BIOME, minX, minX, minZ + 1, maxZ - 1, "fillbiome_layer_" + layer + "_west");
+                    biomeChanged |= runFillBiomeArea(level, chunkPos, TARGET_BIOME, SOURCE_BIOME, maxX, maxX, minZ + 1, maxZ - 1, "fillbiome_layer_" + layer + "_east");
+                }
+            }
+        }
+
+        int surfaceChanges = animateSurfaceLayer(level, chunkPos, animation, layer);
+        return new LayerResult(true, biomeChanged, surfaceChanges);
+    }
+
+    private static int animateSurfaceLayer(ServerLevel level, ChunkPos chunkPos, ConversionAnimation animation, int layer) {
+        int changed = 0;
+        if (!Config.ENABLE_VISUAL_MARKERS.get()) {
+            return changed;
+        }
+
+        int minX = Math.max(chunkPos.getMinBlockX(), animation.centerX() - layer);
+        int maxX = Math.min(chunkPos.getMaxBlockX(), animation.centerX() + layer);
+        int minZ = Math.max(chunkPos.getMinBlockZ(), animation.centerZ() - layer);
+        int maxZ = Math.min(chunkPos.getMaxBlockZ(), animation.centerZ() + layer);
+
+        for (int x = minX; x <= maxX; x++) {
+            changed += animateSurfaceColumn(level, chunkPos, x, minZ, layer);
+            if (maxZ != minZ) {
+                changed += animateSurfaceColumn(level, chunkPos, x, maxZ, layer);
+            }
+        }
+
+        for (int z = minZ + 1; z <= maxZ - 1; z++) {
+            changed += animateSurfaceColumn(level, chunkPos, minX, z, layer);
+            if (maxX != minX) {
+                changed += animateSurfaceColumn(level, chunkPos, maxX, z, layer);
+            }
+        }
+
+        return changed;
+    }
+
+    private static int animateSurfaceColumn(ServerLevel level, ChunkPos chunkPos, int x, int z, int layer) {
+        RandomSource random = RandomSource.create(level.getSeed() ^ (long) x * 341873128712L ^ (long) z * 132897987541L ^ ((long) layer << 16));
+        BlockPos ground = getSurface(level, x, z);
+        BlockPos topPos = ground.above();
+        BlockState groundState = level.getBlockState(ground);
+
+        if (!groundState.is(Blocks.GRASS_BLOCK) && !groundState.is(Blocks.DIRT)) {
+            return 0;
+        }
+
+        int changed = 0;
+        int roll = random.nextInt(100);
+        if (roll < 20) {
+            if (setSurfaceBlock(level, chunkPos, ground, Blocks.PODZOL.defaultBlockState(), "animation_podzol")) {
+                changed++;
+            }
+        } else if (roll < 35) {
+            if (setSurfaceBlock(level, chunkPos, ground, Blocks.ROOTED_DIRT.defaultBlockState(), "animation_rooted_dirt")) {
+                changed++;
+            }
+        } else if (roll < 45) {
+            if (setSurfaceBlock(level, chunkPos, ground, Blocks.MOSS_BLOCK.defaultBlockState(), "animation_moss")) {
+                changed++;
+            }
+        }
+
+        if (level.isEmptyBlock(topPos)) {
+            BlockState cover = random.nextInt(5) == 0 ? Blocks.FERN.defaultBlockState() : Blocks.SHORT_GRASS.defaultBlockState();
+            if (cover.canSurvive(level, topPos) && placeSurfaceCover(level, chunkPos, topPos, cover, "animation_cover")) {
+                changed++;
+            }
+        }
+
+        return changed;
+    }
+
+    private static void resendChunkBiomes(ServerLevel level, ChunkPos chunkPos) {
+        var chunk = level.getChunk(chunkPos.x, chunkPos.z);
+        chunk.setUnsaved(true);
+        level.getChunkSource().chunkMap.resendBiomesForChunks(java.util.List.of(chunk));
+        logEvent(level, chunkPos, "biome_resend", "resent biome data for chunk after animated conversion step");
     }
 
     private static void decorateCompletedChunk(ServerLevel level, ChunkPos chunkPos) {
         logEvent(level, chunkPos, "decorate_start", "starting forest re-decoration via vanilla placed features");
+        int clearedSurfacePlants = prepareChunkForTreeFeatures(level, chunkPos);
+        logEvent(level, chunkPos, "decorate_prepare", "cleared {} surface plants before running vanilla tree features", clearedSurfacePlants);
 
         int successfulPlacements = 0;
         if (placePlacedFeature(level, chunkPos, 71L, VegetationPlacements.TREES_BIRCH_AND_OAK, "trees_birch_and_oak")) {
@@ -582,6 +814,37 @@ final class PrototypeSuccessionSystem {
         int surfaceChanges = applyForestFloorVariation(level, chunkPos);
         level.getChunk(chunkPos.x, chunkPos.z).setUnsaved(true);
         logEvent(level, chunkPos, "decorate_done", "forest re-decoration finished with {} successful placed-feature passes and {} surface changes", successfulPlacements, surfaceChanges);
+    }
+
+    private static int prepareChunkForTreeFeatures(ServerLevel level, ChunkPos chunkPos) {
+        int cleared = 0;
+        for (int x = chunkPos.getMinBlockX(); x <= chunkPos.getMaxBlockX(); x++) {
+            for (int z = chunkPos.getMinBlockZ(); z <= chunkPos.getMaxBlockZ(); z++) {
+                BlockPos ground = getSurface(level, x, z);
+                BlockState groundState = level.getBlockState(ground);
+                if (!isForestSoil(groundState)) {
+                    continue;
+                }
+
+                BlockPos topPos = ground.above();
+                BlockState topState = level.getBlockState(topPos);
+                if (!isTreePlacementBlocker(topState)) {
+                    continue;
+                }
+
+                logEvent(level, chunkPos, "tree_prep_clear", "clearing {} at {} before tree feature placement", topState, topPos);
+                level.setBlockAndUpdate(topPos, Blocks.AIR.defaultBlockState());
+                cleared++;
+
+                if (topState.is(Blocks.TALL_GRASS) || topState.is(Blocks.LARGE_FERN)) {
+                    BlockPos upperPos = topPos.above();
+                    if (level.getBlockState(upperPos).is(topState.getBlock())) {
+                        level.setBlockAndUpdate(upperPos, Blocks.AIR.defaultBlockState());
+                    }
+                }
+            }
+        }
+        return cleared;
     }
 
     private static void placeRandomPlants(ServerLevel level, ChunkPos chunkPos, RandomSource random, BlockState plantState, int attempts) {
@@ -682,6 +945,27 @@ final class PrototypeSuccessionSystem {
         return true;
     }
 
+    private static boolean isForestSoil(BlockState state) {
+        return state.is(Blocks.GRASS_BLOCK)
+                || state.is(Blocks.DIRT)
+                || state.is(Blocks.PODZOL)
+                || state.is(Blocks.COARSE_DIRT)
+                || state.is(Blocks.ROOTED_DIRT)
+                || state.is(Blocks.MOSS_BLOCK);
+    }
+
+    private static boolean isTreePlacementBlocker(BlockState state) {
+        return state.is(Blocks.SHORT_GRASS)
+                || state.is(Blocks.TALL_GRASS)
+                || state.is(Blocks.FERN)
+                || state.is(Blocks.LARGE_FERN)
+                || state.is(BlockTags.FLOWERS)
+                || state.is(BlockTags.SAPLINGS)
+                || state.is(Blocks.BROWN_MUSHROOM)
+                || state.is(Blocks.RED_MUSHROOM)
+                || state.is(Blocks.MOSS_CARPET);
+    }
+
     private static BlockPos randomChunkBlock(ChunkPos chunkPos, RandomSource random, int margin) {
         int x = chunkPos.getMinBlockX() + margin + random.nextInt(Math.max(1, 16 - margin * 2));
         int z = chunkPos.getMinBlockZ() + margin + random.nextInt(Math.max(1, 16 - margin * 2));
@@ -759,7 +1043,30 @@ final class PrototypeSuccessionSystem {
         }
     }
 
+    private record ConversionAnimation(ChunkPos chunkPos, int centerX, int centerZ, int maxLayer, int nextLayer, int elapsedTicks, int lastAnimatedLayer) {
+        ConversionAnimation(ChunkPos chunkPos, int centerX, int centerZ, int maxLayer, int nextLayer, int elapsedTicks) {
+            this(chunkPos, centerX, centerZ, maxLayer, nextLayer, elapsedTicks, -1);
+        }
+
+        ConversionAnimation withProgress(int updatedNextLayer, int updatedElapsedTicks, int updatedLastAnimatedLayer) {
+            return new ConversionAnimation(chunkPos, centerX, centerZ, maxLayer, updatedNextLayer, updatedElapsedTicks, updatedLastAnimatedLayer);
+        }
+    }
+
     private record ScanResult(boolean eligible, float score, String biomeId, BlockPos surface, String reason) {
+    }
+
+    private record LayerResult(boolean success, boolean biomeChanged, int surfaceChanges) {
+    }
+
+    private record AnimationTickResult(boolean finished, ConversionAnimation updatedAnimation) {
+        static AnimationTickResult done() {
+            return new AnimationTickResult(true, null);
+        }
+
+        static AnimationTickResult running(ConversionAnimation updatedAnimation) {
+            return new AnimationTickResult(false, updatedAnimation);
+        }
     }
 
     private record ProgressResult(boolean changed, String message) {
