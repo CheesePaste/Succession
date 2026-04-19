@@ -14,6 +14,7 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.data.worldgen.features.TreeFeatures;
 import net.minecraft.data.worldgen.placement.MiscOverworldPlacements;
 import net.minecraft.data.worldgen.placement.VegetationPlacements;
 import net.minecraft.network.chat.Component;
@@ -32,6 +33,7 @@ import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.Biomes;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.levelgen.feature.ConfiguredFeature;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.placement.PlacedFeature;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
@@ -706,6 +708,8 @@ final class PrototypeSuccessionSystem {
         }
 
         int surfaceChanges = animateSurfaceLayer(level, chunkPos, animation, layer);
+        int animatedTrees = growAnimatedTreesOnLayer(level, chunkPos, animation, layer);
+        logEvent(level, chunkPos, "conversion_layer_result", "layer {} finished with biomeChanged={} surfaceChanges={} animatedTrees={}", layer, biomeChanged, surfaceChanges, animatedTrees);
         return new LayerResult(true, biomeChanged, surfaceChanges);
     }
 
@@ -771,6 +775,76 @@ final class PrototypeSuccessionSystem {
         }
 
         return changed;
+    }
+
+    private static int growAnimatedTreesOnLayer(ServerLevel level, ChunkPos chunkPos, ConversionAnimation animation, int layer) {
+        RandomSource random = RandomSource.create(level.getSeed() ^ chunkPos.toLong() ^ (977L * (layer + 1L)));
+        int attempts = layer <= 1 ? 1 : 1 + random.nextInt(2);
+        int placedTrees = 0;
+
+        for (int attempt = 0; attempt < attempts; attempt++) {
+            BlockPos basePos = pickLayerTreeCandidate(animation, chunkPos, layer, random);
+            BlockPos ground = findGround(level, basePos);
+            BlockState groundState = level.getBlockState(ground);
+            if (!isForestSoil(groundState)) {
+                logEvent(level, chunkPos, "animation_tree_skip", "skip animated tree at {} because ground is {}", ground, groundState);
+                continue;
+            }
+
+            if (normalizeTreeSoil(level, chunkPos, ground)) {
+                groundState = level.getBlockState(ground);
+            }
+
+            if (!clearTreePlacementColumn(level, chunkPos, ground.above(), 8)) {
+                logEvent(level, chunkPos, "animation_tree_skip", "skip animated tree at {} because canopy column could not be cleared", ground);
+                continue;
+            }
+
+            ResourceKey<ConfiguredFeature<?, ?>> treeFeature = pickAnimatedTreeFeature(random, layer);
+            boolean placed = placeConfiguredTree(level, chunkPos, ground.above(), treeFeature, random, "animated_" + treeFeature.location().getPath());
+            if (placed) {
+                placedTrees++;
+            }
+        }
+
+        return placedTrees;
+    }
+
+    private static BlockPos pickLayerTreeCandidate(ConversionAnimation animation, ChunkPos chunkPos, int layer, RandomSource random) {
+        if (layer <= 0) {
+            return new BlockPos(animation.centerX(), 0, animation.centerZ());
+        }
+
+        int minX = Math.max(chunkPos.getMinBlockX(), animation.centerX() - layer);
+        int maxX = Math.min(chunkPos.getMaxBlockX(), animation.centerX() + layer);
+        int minZ = Math.max(chunkPos.getMinBlockZ(), animation.centerZ() - layer);
+        int maxZ = Math.min(chunkPos.getMaxBlockZ(), animation.centerZ() + layer);
+        int side = random.nextInt(4);
+        return switch (side) {
+            case 0 -> new BlockPos(Mth.nextInt(random, minX, maxX), 0, minZ);
+            case 1 -> new BlockPos(Mth.nextInt(random, minX, maxX), 0, maxZ);
+            case 2 -> new BlockPos(minX, 0, Mth.nextInt(random, minZ, maxZ));
+            default -> new BlockPos(maxX, 0, Mth.nextInt(random, minZ, maxZ));
+        };
+    }
+
+    private static ResourceKey<ConfiguredFeature<?, ?>> pickAnimatedTreeFeature(RandomSource random, int layer) {
+        if (layer >= 4 && random.nextInt(5) == 0) {
+            return TreeFeatures.FANCY_OAK;
+        }
+        return random.nextBoolean() ? TreeFeatures.OAK : TreeFeatures.BIRCH;
+    }
+
+    private static boolean placeConfiguredTree(ServerLevel level, ChunkPos chunkPos, BlockPos pos, ResourceKey<ConfiguredFeature<?, ?>> featureKey, RandomSource random, String featureName) {
+        try {
+            var featureHolder = level.registryAccess().lookupOrThrow(Registries.CONFIGURED_FEATURE).getOrThrow(featureKey);
+            boolean placed = featureHolder.value().place(level, level.getChunkSource().getGenerator(), random, pos);
+            logEvent(level, chunkPos, placed ? "animation_tree_place" : "animation_tree_noop", "configured tree feature {} at {} -> {}", featureName, pos, placed);
+            return placed;
+        } catch (RuntimeException exception) {
+            logEvent(level, chunkPos, "animation_tree_failed", "configured tree feature {} at {} failed with {}", featureName, pos, exception.getMessage());
+            return false;
+        }
     }
 
     private static void resendChunkBiomes(ServerLevel level, ChunkPos chunkPos) {
@@ -964,6 +1038,37 @@ final class PrototypeSuccessionSystem {
                 || state.is(Blocks.BROWN_MUSHROOM)
                 || state.is(Blocks.RED_MUSHROOM)
                 || state.is(Blocks.MOSS_CARPET);
+    }
+
+    private static boolean normalizeTreeSoil(ServerLevel level, ChunkPos chunkPos, BlockPos ground) {
+        BlockState groundState = level.getBlockState(ground);
+        if (groundState.is(Blocks.GRASS_BLOCK) || groundState.is(Blocks.DIRT) || groundState.is(Blocks.PODZOL)) {
+            return false;
+        }
+
+        logEvent(level, chunkPos, "tree_soil_normalize", "normalizing tree soil at {} from {} to {}", ground, groundState, Blocks.DIRT.defaultBlockState());
+        level.setBlockAndUpdate(ground, Blocks.DIRT.defaultBlockState());
+        return true;
+    }
+
+    private static boolean clearTreePlacementColumn(ServerLevel level, ChunkPos chunkPos, BlockPos startPos, int height) {
+        for (int dy = 0; dy < height; dy++) {
+            BlockPos pos = startPos.above(dy);
+            BlockState state = level.getBlockState(pos);
+            if (state.isAir()) {
+                continue;
+            }
+            if (state.is(BlockTags.LOGS) || state.is(BlockTags.LEAVES)) {
+                return false;
+            }
+            if (!isTreePlacementBlocker(state)) {
+                return false;
+            }
+
+            logEvent(level, chunkPos, "tree_column_clear", "clearing {} at {} for progressive tree placement", state, pos);
+            level.setBlockAndUpdate(pos, Blocks.AIR.defaultBlockState());
+        }
+        return true;
     }
 
     private static BlockPos randomChunkBlock(ChunkPos chunkPos, RandomSource random, int margin) {
