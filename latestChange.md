@@ -1,63 +1,91 @@
-已经把“衰退路径 + 衰退区与顶级 forest 的竞争”接进现有原型里了，当前是一个基础但可观测的版本：
+• 已经按你这次的意思改成“plains 是中值”的双向原型了：
 
-- plains 现在会受附近“已完成的 prototype forest”推动，继续向 forest 演替
-- 已完成的 prototype forest 不再永远锁死；如果局部林木支撑弱、周边 plains/退化压力更强，会开始衰退
-- forest 衰退到阈值后，会反向触发一个 outward retreat 动画，把 forest -> plains
-- retreat 过程中会一层层清树、退森林地表，最后做一次 plains 化清理
-- 旁边如果仍有稳定 forest，forest 会获得“恢复”而不是继续掉血，形成竞争拉扯
+- 正向：plains -> forest
+- 反向：plains -> desert
+- 两边都会对周围产生压力，形成竞争
+- 目前方向选择先按“概率 + 邻域压力”做，适合你在超平坦里先观察
 
-这次核心改动在 src/main/java/com/s/succession/PrototypeSuccessionSystem.java：
+这次核心调整
 
-- scanChunk(...) 现在不再只识别 growth，还会输出 mode
-    - growth：plains 受 forest 压力推动扩张，见 src/main/java/com/s/succession/PrototypeSuccessionSystem.java:442
-    - decay：已成 forest 在竞争中失势，见 src/main/java/com/s/succession/PrototypeSuccessionSystem.java:501
-    - stable：forest 顶住了退化压力，见 src/main/java/com/s/succession/PrototypeSuccessionSystem.java:504
-- 邻域竞争压力通过 sampleNeighborPressure(...) 计算，见 src/main/java/com/s/succession/
-  PrototypeSuccessionSystem.java:507
-    - forestPressure 来自邻近、且已完成的 prototype forest
-    - decayPressure 来自邻近 plains
-- progressChunk(...) 里新增了三条分支
-    - growth 正向推进，见 src/main/java/com/s/succession/PrototypeSuccessionSystem.java:270
-    - forest_decay 反向扣减 forest 健康，见 src/main/java/com/s/succession/PrototypeSuccessionSystem.java:291
-    - forest_recover 在稳定竞争下缓慢回血，见 src/main/java/com/s/succession/PrototypeSuccessionSystem.java:310
-- 反向塌缩入口在 tryCollapse(...)，见 src/main/java/com/s/succession/PrototypeSuccessionSystem.java:608
-- 动画系统现在支持两种方向
-    - ConversionKind.ADVANCE
-    - ConversionKind.RETREAT
-      见 src/main/java/com/s/succession/PrototypeSuccessionSystem.java:1454
-- retreat 波前的视觉处理：
-    - animateDecaySurfaceLayer(...) 做地表退化，见 src/main/java/com/s/succession/PrototypeSuccessionSystem.java:882
-    - removeDecayedTreesOnLayer(...) 一圈圈清树，见 src/main/java/com/s/succession/PrototypeSuccessionSystem.java:1007
-    - decorateDecayedChunk(...) / restorePlainSurface(...) 做最终 plains 化收尾，见 src/main/java/com/s/succession/
-      PrototypeSuccessionSystem.java:1125 和 src/main/java/com/s/succession/PrototypeSuccessionSystem.java:1151
+- PrototypeChunkState 现在是“有符号进度”
+  - 正进度代表朝 forest
+  - 负进度代表朝 desert
+  - 见 src/main/java/com/s/succession/PrototypeChunkState.java:51
+- 状态阶段名也变成了双向
+  - 例如 forest_mid / desert_late / converted_forest / converted_desert
+  - 见 src/main/java/com/s/succession/PrototypeChunkState.java:103
 
-状态输出也更新了：
+扫描与竞争逻辑
 
-- /succession status 现在会显示
-    - mode
-    - forestPressure
-    - decayPressure
-      见 src/main/java/com/s/succession/PrototypeSuccessionSystem.java:175
+- /succession status 现在会显示：
+  - forestPressure
+  - desertPressure
+  - 当前 mode
+  - 中值路径结构
+  - 见 src/main/java/com/s/succession/PrototypeSuccessionSystem.java:176
+- plains 不再只会往 forest 走了
+  - 在 scanChunk(...) 里，plains 会先做一个概率分支：
+    - PLAINS_TO_FOREST
+    - PLAINS_TO_DESERT
+    - 或本轮保持中立
+  - 见 src/main/java/com/s/succession/PrototypeSuccessionSystem.java:438
+  - 概率核心在 rollPlainDirection(...)
+  - 见 src/main/java/com/s/succession/PrototypeSuccessionSystem.java:1532
+- 邻域竞争现在是 forest vs desert
+  - 统计邻近已完成 forest / desert chunk 压力
+  - 见 src/main/java/com/s/succession/PrototypeSuccessionSystem.java:516
+
+推进与回退
+
+- plains 收到正向概率时，进度向正侧推，见 src/main/java/com/s/succession/PrototypeSuccessionSystem.java:273
+- plains 收到负向概率时，进度向负侧推，见 src/main/java/com/s/succession/PrototypeSuccessionSystem.java:283
+- 已完成 forest 遇到 desert 压力会开始回退 toward plains，见 src/main/java/com/s/succession/
+  PrototypeSuccessionSystem.java:293
+- 已完成 desert 遇到 forest 压力也会回退 toward plains，见 src/main/java/com/s/succession/
+  PrototypeSuccessionSystem.java:301
+- 中立期没被明显拉动时，会往 0 漂回，也就是回到 plains 中值，见 src/main/java/com/s/succession/
+  PrototypeSuccessionSystem.java:321 和 src/main/java/com/s/succession/PrototypeSuccessionSystem.java:1522
+
+动画与地表
+
+- 转成 forest 的 outward 动画还保留
+- 现在也支持转成 desert 的 outward 动画
+- forest/desert 回退到 plains 也都支持 outward retreat
+- 动画种类扩展到了 4 种，见 src/main/java/com/s/succession/PrototypeSuccessionSystem.java:1644
+- desert 完成后的收尾装饰加上了，见 src/main/java/com/s/succession/PrototypeSuccessionSystem.java:1246
+- plains 恢复收尾也单独整理了，见 src/main/java/com/s/succession/PrototypeSuccessionSystem.java:1238
+
+为了你测试方便，我顺手也改了命令
+
+- /succession accelerate 现在支持负值
+  - 也就是你可以直接手动往 desert 侧推
+  - 见 src/main/java/com/s/succession/PrototypeSuccessionSystem.java:65
+
+你在超平坦里现在可以这么测
+
+- 正向测试：
+  - /succession accelerate 0.5
+  - 多来几次，看是否进 forest 分支
+- 负向测试：
+  - /succession accelerate -0.5
+  - 多来几次，看是否进 desert 分支
+- 重置：
+  - /succession reset
+- 状态观察：
+  - /succession status
 
 我已经验证：
 
 - .\gradlew.bat compileJava 通过
 - .\gradlew.bat build 通过
 
-当前实现里我做了一个明确取舍：
+当前这个版本是“先可观测、先能竞争”的原型，特征是：
 
-- 只有“本系统转出来并标记为 completed 的 forest”会进入衰退竞争
-- 原生世界里本来就存在的自然 forest，目前不会被这个 prototype 自动拉进衰退路径
+- plains 的去向先由概率和邻域压力决定
+- 很适合超平坦做前线观察
+- 还不是最终生态学模型，但已经能看到 forest / desert 抢 plains
 
-这样风险更低，也更容易观察 prototype 行为。
+如果你继续，我建议下一步直接做这两个里的一个：
 
-你接下来可以直接测这几种场景：
-
-1. 让一片 plains 靠近已完成的 forest，看它是否更容易被拉成 forest
-2. 手工把某个已完成 forest 的树砍掉，看它是否开始掉健康并触发 retreat
-3. 在 forest 和大片 plains 接壤的边缘，看 forest_recover 和 forest_decay 哪边占优
-
-如果你要，我下一步可以继续做两个很自然的增强：
-
-1. 给 retreat 也加“更明显的视觉特效”，比如落叶粒子/枯萎感
-2. 把竞争从“邻近 8 chunk”扩成“距离衰减场”，让前线更自然而不是偏格子化
+1. 给 plains 的正负概率再加“温湿度假参数 / 噪声场”，让超平坦里前线更自然
+2. 做一个 /succession debugfrontier，直接打印当前 chunk 是偏 forest 还是偏 desert，以及本轮概率是多少

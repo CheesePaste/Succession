@@ -49,10 +49,11 @@ final class PrototypeSuccessionSystem {
     private static final int MAX_PART_RADIUS_CHUNKS = 7;
     private static final float PART_RATE_VARIATION = 0.12F;
     private static final int CONVERSION_ANIMATION_TICKS = 28;
-    private static final String SOURCE_BIOME = "minecraft:plains";
-    private static final String TARGET_BIOME = "minecraft:forest";
-    private static final float FOREST_COMPETITION_RECOVERY = 0.60F;
-    private static final float FOREST_DECAY_MULTIPLIER = 0.85F;
+    private static final String MID_BIOME = "minecraft:plains";
+    private static final String POSITIVE_TARGET_BIOME = "minecraft:forest";
+    private static final String NEGATIVE_TARGET_BIOME = "minecraft:desert";
+    private static final float BIOME_COMPETITION_RECOVERY = 0.60F;
+    private static final float OPPOSITION_RETREAT_MULTIPLIER = 0.85F;
     private static final Map<Long, ConversionAnimation> ACTIVE_CONVERSIONS = new HashMap<>();
 
     private PrototypeSuccessionSystem() {
@@ -64,7 +65,7 @@ final class PrototypeSuccessionSystem {
                 .then(Commands.literal("scan").executes(context -> scanCurrentChunk(context.getSource())))
                 .then(Commands.literal("accelerate")
                         .requires(source -> source.hasPermission(2))
-                        .then(Commands.argument("amount", FloatArgumentType.floatArg(0.0F, 1.0F))
+                        .then(Commands.argument("amount", FloatArgumentType.floatArg(-1.0F, 1.0F))
                                 .executes(context -> accelerateCurrentChunk(context.getSource(), FloatArgumentType.getFloat(context, "amount")))))
                 .then(Commands.literal("reset")
                         .requires(source -> source.hasPermission(2))
@@ -172,7 +173,7 @@ final class PrototypeSuccessionSystem {
         String reason = state == null ? "never_scanned" : state.lastScanReason();
         return String.format(
                 Locale.ROOT,
-                "[Succession] chunk=(%d,%d) biome=%s mode=%s eligible=%s progress=%.0f%% storedScore=%.2f liveScore=%.2f forestPressure=%.2f decayPressure=%.2f stage=%s reason=%s globalRate=%.2f path=%s -> %s",
+                "[Succession] chunk=(%d,%d) biome=%s mode=%s eligible=%s progress=%.0f%% storedScore=%.2f liveScore=%.2f forestPressure=%.2f desertPressure=%.2f stage=%s reason=%s globalRate=%.2f paths=%s <-> [%s] <-> %s",
                 chunkPos.x,
                 chunkPos.z,
                 scan.biomeId(),
@@ -182,12 +183,13 @@ final class PrototypeSuccessionSystem {
                 storedScore,
                 scan.score(),
                 scan.forestPressure(),
-                scan.decayPressure(),
+                scan.desertPressure(),
                 stage,
                 reason,
                 Config.PROTOTYPE_GLOBAL_RATE.get(),
-                SOURCE_BIOME,
-                TARGET_BIOME);
+                POSITIVE_TARGET_BIOME,
+                MID_BIOME,
+                NEGATIVE_TARGET_BIOME);
     }
 
     private static int scanCurrentChunk(CommandSourceStack source) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
@@ -206,7 +208,7 @@ final class PrototypeSuccessionSystem {
         logEvent(level, chunkPos, "manual_accelerate", "requested manual acceleration amount={} currentProgress={}", amount, state.progress());
         state.setProgress(state.progress() + amount);
         state.setLastScanReason("manual_accelerate");
-        state.setLastScore(Math.max(state.lastScore(), amount));
+        state.setLastScore(Math.max(state.lastScore(), Math.abs(amount)));
         applyStageMarkers(level, chunkPos, state);
         tryComplete(level, chunkPos, state);
         data.setDirty();
@@ -230,7 +232,8 @@ final class PrototypeSuccessionSystem {
         ACTIVE_CONVERSIONS.remove(chunkPos.toLong());
         data.remove(chunkPos);
         if (Config.ENABLE_BIOME_SWAP.get()) {
-            runFillBiome(level, chunkPos, SOURCE_BIOME, TARGET_BIOME);
+            runFillBiome(level, chunkPos, MID_BIOME, POSITIVE_TARGET_BIOME);
+            runFillBiome(level, chunkPos, MID_BIOME, NEGATIVE_TARGET_BIOME);
         }
 
         source.sendSuccess(() -> Component.literal(String.format(Locale.ROOT,
@@ -267,79 +270,67 @@ final class PrototypeSuccessionSystem {
         state.setLastScanReason(scan.reason());
 
         float rateMultiplier = assignment.deltaMultiplier();
-        if (scan.mode() == SuccessionMode.GROWTH && scan.eligible()) {
+        if (scan.mode() == SuccessionMode.PLAINS_TO_FOREST && scan.eligible()) {
             float delta = (float) (Config.PROTOTYPE_PROGRESS_PER_SCAN.get() * scan.score() * rateMultiplier);
-            logEvent(level, chunkPos, "growth", "growth scan produced delta={} previousProgress={} score={} reason={} forestPressure={} decayPressure={} part={} center=({}, {}) radius={} localRate={} effectiveRate={} stride={} phase={}",
-                    delta,
-                    state.progress(),
-                    scan.score(),
-                    scan.reason(),
-                    scan.forestPressure(),
-                    scan.decayPressure(),
-                    assignment.partIdLabel(),
-                    assignment.centerChunkX(),
-                    assignment.centerChunkZ(),
-                    assignment.radiusChunks(),
-                    assignment.localRate(),
-                    assignment.effectiveRate(),
-                    assignment.cycleStride(),
-                    assignment.phaseOffset());
+            logEvent(level, chunkPos, "growth_forest", "plains->forest scan produced delta={} previousProgress={} score={} reason={} forestPressure={} desertPressure={} part={} center=({}, {}) radius={} localRate={} effectiveRate={} stride={} phase={}",
+                    delta, state.progress(), scan.score(), scan.reason(), scan.forestPressure(), scan.desertPressure(),
+                    assignment.partIdLabel(), assignment.centerChunkX(), assignment.centerChunkZ(), assignment.radiusChunks(),
+                    assignment.localRate(), assignment.effectiveRate(), assignment.cycleStride(), assignment.phaseOffset());
             state.setProgress(state.progress() + delta);
             state.setCompleted(false);
             applyStageMarkers(level, chunkPos, state);
             tryComplete(level, chunkPos, state);
-        } else if (scan.mode() == SuccessionMode.DECAY && state.completed()) {
-            float decay = (float) (Config.PROTOTYPE_PROGRESS_PER_SCAN.get() * scan.score() * rateMultiplier * FOREST_DECAY_MULTIPLIER);
-            logEvent(level, chunkPos, "forest_decay", "decay scan produced delta={} previousProgress={} score={} reason={} forestPressure={} decayPressure={} part={} center=({}, {}) radius={} localRate={} effectiveRate={} stride={} phase={}",
-                    decay,
-                    state.progress(),
-                    scan.score(),
-                    scan.reason(),
-                    scan.forestPressure(),
-                    scan.decayPressure(),
-                    assignment.partIdLabel(),
-                    assignment.centerChunkX(),
-                    assignment.centerChunkZ(),
-                    assignment.radiusChunks(),
-                    assignment.localRate(),
-                    assignment.effectiveRate(),
-                    assignment.cycleStride(),
-                    assignment.phaseOffset());
-            state.setProgress(state.progress() - decay);
+        } else if (scan.mode() == SuccessionMode.PLAINS_TO_DESERT && scan.eligible()) {
+            float delta = (float) (Config.PROTOTYPE_PROGRESS_PER_SCAN.get() * scan.score() * rateMultiplier);
+            logEvent(level, chunkPos, "growth_desert", "plains->desert scan produced delta={} previousProgress={} score={} reason={} forestPressure={} desertPressure={} part={} center=({}, {}) radius={} localRate={} effectiveRate={} stride={} phase={}",
+                    delta, state.progress(), scan.score(), scan.reason(), scan.forestPressure(), scan.desertPressure(),
+                    assignment.partIdLabel(), assignment.centerChunkX(), assignment.centerChunkZ(), assignment.radiusChunks(),
+                    assignment.localRate(), assignment.effectiveRate(), assignment.cycleStride(), assignment.phaseOffset());
+            state.setProgress(state.progress() - delta);
+            state.setCompleted(false);
+            applyStageMarkers(level, chunkPos, state);
+            tryComplete(level, chunkPos, state);
+        } else if (scan.mode() == SuccessionMode.FOREST_RETREAT && state.completed() && state.progress() > 0.0F) {
+            float retreat = (float) (Config.PROTOTYPE_PROGRESS_PER_SCAN.get() * scan.score() * rateMultiplier * OPPOSITION_RETREAT_MULTIPLIER);
+            logEvent(level, chunkPos, "forest_retreat", "forest retreat scan produced delta={} previousProgress={} score={} reason={} forestPressure={} desertPressure={} part={} center=({}, {}) radius={} localRate={} effectiveRate={} stride={} phase={}",
+                    retreat, state.progress(), scan.score(), scan.reason(), scan.forestPressure(), scan.desertPressure(),
+                    assignment.partIdLabel(), assignment.centerChunkX(), assignment.centerChunkZ(), assignment.radiusChunks(),
+                    assignment.localRate(), assignment.effectiveRate(), assignment.cycleStride(), assignment.phaseOffset());
+            state.setProgress(state.progress() - retreat);
             tryCollapse(level, chunkPos, state);
-        } else if (scan.mode() == SuccessionMode.STABLE && state.completed()) {
-            float recovery = Config.PROTOTYPE_DECAY_PER_SCAN.get().floatValue() * (0.5F + scan.score() * FOREST_COMPETITION_RECOVERY) * rateMultiplier;
-            logEvent(level, chunkPos, "forest_recover", "stable forest recovered by {} previousProgress={} score={} forestPressure={} decayPressure={}",
-                    recovery,
-                    state.progress(),
-                    scan.score(),
-                    scan.forestPressure(),
-                    scan.decayPressure());
+        } else if (scan.mode() == SuccessionMode.DESERT_RETREAT && state.completed() && state.progress() < 0.0F) {
+            float retreat = (float) (Config.PROTOTYPE_PROGRESS_PER_SCAN.get() * scan.score() * rateMultiplier * OPPOSITION_RETREAT_MULTIPLIER);
+            logEvent(level, chunkPos, "desert_retreat", "desert retreat scan produced delta={} previousProgress={} score={} reason={} forestPressure={} desertPressure={} part={} center=({}, {}) radius={} localRate={} effectiveRate={} stride={} phase={}",
+                    retreat, state.progress(), scan.score(), scan.reason(), scan.forestPressure(), scan.desertPressure(),
+                    assignment.partIdLabel(), assignment.centerChunkX(), assignment.centerChunkZ(), assignment.radiusChunks(),
+                    assignment.localRate(), assignment.effectiveRate(), assignment.cycleStride(), assignment.phaseOffset());
+            state.setProgress(state.progress() + retreat);
+            tryCollapse(level, chunkPos, state);
+        } else if (scan.mode() == SuccessionMode.FOREST_STABLE && state.completed() && state.progress() > 0.0F) {
+            float recovery = Config.PROTOTYPE_DECAY_PER_SCAN.get().floatValue() * (0.5F + scan.score() * BIOME_COMPETITION_RECOVERY) * rateMultiplier;
+            logEvent(level, chunkPos, "forest_recover", "stable forest recovered by {} previousProgress={} score={} forestPressure={} desertPressure={}",
+                    recovery, state.progress(), scan.score(), scan.forestPressure(), scan.desertPressure());
             state.setProgress(state.progress() + recovery);
-        } else if (!state.completed() && scan.mode() != SuccessionMode.DECAY) {
-            float decay = Config.PROTOTYPE_DECAY_PER_SCAN.get().floatValue() * rateMultiplier;
-            logEvent(level, chunkPos, "growth_decay", "ineligible growth scan caused decay={} previousProgress={} reason={} forestPressure={} decayPressure={} part={} center=({}, {}) radius={} localRate={} effectiveRate={} stride={} phase={}",
-                    decay,
-                    state.progress(),
-                    scan.reason(),
-                    scan.forestPressure(),
-                    scan.decayPressure(),
-                    assignment.partIdLabel(),
-                    assignment.centerChunkX(),
-                    assignment.centerChunkZ(),
-                    assignment.radiusChunks(),
-                    assignment.localRate(),
-                    assignment.effectiveRate(),
-                    assignment.cycleStride(),
-                    assignment.phaseOffset());
-            state.setProgress(state.progress() - decay);
+        } else if (scan.mode() == SuccessionMode.DESERT_STABLE && state.completed() && state.progress() < 0.0F) {
+            float recovery = Config.PROTOTYPE_DECAY_PER_SCAN.get().floatValue() * (0.5F + scan.score() * BIOME_COMPETITION_RECOVERY) * rateMultiplier;
+            logEvent(level, chunkPos, "desert_recover", "stable desert recovered by {} previousProgress={} score={} forestPressure={} desertPressure={}",
+                    recovery, state.progress(), scan.score(), scan.forestPressure(), scan.desertPressure());
+            state.setProgress(state.progress() - recovery);
+        } else if (!state.completed()) {
+            float drift = Config.PROTOTYPE_DECAY_PER_SCAN.get().floatValue() * rateMultiplier;
+            float newProgress = moveTowardZero(state.progress(), drift);
+            logEvent(level, chunkPos, "plains_drift", "midpoint drift moved progress from {} to {} reason={} forestPressure={} desertPressure={} part={} center=({}, {}) radius={} localRate={} effectiveRate={} stride={} phase={}",
+                    state.progress(), newProgress, scan.reason(), scan.forestPressure(), scan.desertPressure(),
+                    assignment.partIdLabel(), assignment.centerChunkX(), assignment.centerChunkZ(), assignment.radiusChunks(),
+                    assignment.localRate(), assignment.effectiveRate(), assignment.cycleStride(), assignment.phaseOffset());
+            state.setProgress(newProgress);
         }
 
         data.setDirty();
 
         if (Config.VERBOSE_LOGGING.get()) {
             Succession.LOGGER.info(
-                    "Prototype scan chunk=({}, {}) mode={} eligible={} score={} progress={} reason={} forestPressure={} decayPressure={} part={} center=({}, {}) radius={} effectiveRate={} stride={} phase={}",
+                    "Prototype scan chunk=({}, {}) mode={} eligible={} score={} progress={} reason={} forestPressure={} desertPressure={} part={} center=({}, {}) radius={} effectiveRate={} stride={} phase={}",
                     chunkPos.x,
                     chunkPos.z,
                     scan.mode(),
@@ -348,7 +339,7 @@ final class PrototypeSuccessionSystem {
                     state.progress(),
                     scan.reason(),
                     scan.forestPressure(),
-                    scan.decayPressure(),
+                    scan.desertPressure(),
                     assignment.partIdLabel(),
                     assignment.centerChunkX(),
                     assignment.centerChunkZ(),
@@ -360,7 +351,7 @@ final class PrototypeSuccessionSystem {
 
         String message = String.format(
                 Locale.ROOT,
-                "[Succession] scanned chunk (%d,%d): biome=%s mode=%s eligible=%s score=%.2f progress=%.0f%% stage=%s reason=%s forestPressure=%.2f decayPressure=%.2f part=%s rate=%.2f stride=%d",
+                "[Succession] scanned chunk (%d,%d): biome=%s mode=%s eligible=%s score=%.2f progress=%.0f%% stage=%s reason=%s forestPressure=%.2f desertPressure=%.2f part=%s rate=%.2f stride=%d",
                 chunkPos.x,
                 chunkPos.z,
                 scan.biomeId(),
@@ -371,7 +362,7 @@ final class PrototypeSuccessionSystem {
                 state.stageName(),
                 scan.reason(),
                 scan.forestPressure(),
-                scan.decayPressure(),
+                scan.desertPressure(),
                 assignment.partIdLabel(),
                 assignment.effectiveRate(),
                 assignment.cycleStride());
@@ -447,17 +438,21 @@ final class PrototypeSuccessionSystem {
         NeighborPressure pressure = sampleNeighborPressure(level, chunkPos);
         boolean isPlains = level.getBiome(surface).is(Biomes.PLAINS);
         boolean isForest = level.getBiome(surface).is(Biomes.FOREST);
+        boolean isDesert = level.getBiome(surface).is(Biomes.DESERT);
 
-        if (!isPlains && !isForest) {
-            return new ScanResult(SuccessionMode.NONE, false, 0.0F, biomeId, surface, "unsupported_biome", pressure.forestPressure(), pressure.decayPressure());
+        if (!isPlains && !isForest && !isDesert) {
+            return new ScanResult(SuccessionMode.NONE, false, 0.0F, biomeId, surface, "unsupported_biome", pressure.forestPressure(), pressure.desertPressure());
         }
 
         BlockState groundState = level.getBlockState(surface);
         if (isPlains && !groundState.is(Blocks.GRASS_BLOCK)) {
-            return new ScanResult(SuccessionMode.NONE, false, 0.0F, biomeId, surface, "surface_not_grass_block", pressure.forestPressure(), pressure.decayPressure());
+            return new ScanResult(SuccessionMode.NONE, false, 0.0F, biomeId, surface, "surface_not_grass_block", pressure.forestPressure(), pressure.desertPressure());
         }
         if (isForest && !isForestSoil(groundState)) {
-            return new ScanResult(SuccessionMode.NONE, false, 0.0F, biomeId, surface, "forest_surface_not_supported", pressure.forestPressure(), pressure.decayPressure());
+            return new ScanResult(SuccessionMode.NONE, false, 0.0F, biomeId, surface, "forest_surface_not_supported", pressure.forestPressure(), pressure.desertPressure());
+        }
+        if (isDesert && !isDesertSoil(groundState)) {
+            return new ScanResult(SuccessionMode.NONE, false, 0.0F, biomeId, surface, "desert_surface_not_supported", pressure.forestPressure(), pressure.desertPressure());
         }
 
         int samples = 0;
@@ -491,22 +486,36 @@ final class PrototypeSuccessionSystem {
         float treeRatio = samples == 0 ? 0.0F : Mth.clamp((float) treeSamples / (float) samples, 0.0F, 1.0F);
         float waterRatio = samples == 0 ? 0.0F : Mth.clamp((float) waterSamples / (float) samples, 0.0F, 1.0F);
         if (isPlains) {
-            float growthScore = Mth.clamp(0.28F + lushRatio * 0.28F + treeRatio * 0.16F + waterRatio * 0.10F + pressure.forestPressure() * 0.24F - pressure.decayPressure() * 0.06F, 0.0F, 1.0F);
-            return new ScanResult(SuccessionMode.GROWTH, true, growthScore, biomeId, surface, "forest_expansion_pressure", pressure.forestPressure(), pressure.decayPressure());
+            BranchRoll branchRoll = rollPlainDirection(level, chunkPos, pressure);
+            if (!branchRoll.active()) {
+                return new ScanResult(SuccessionMode.NONE, false, branchRoll.score(), biomeId, surface, "probability_hold", pressure.forestPressure(), pressure.desertPressure());
+            }
+            if (branchRoll.direction() > 0) {
+                return new ScanResult(SuccessionMode.PLAINS_TO_FOREST, true, branchRoll.score(), biomeId, surface, "probability_forest_pull", pressure.forestPressure(), pressure.desertPressure());
+            }
+            return new ScanResult(SuccessionMode.PLAINS_TO_DESERT, true, branchRoll.score(), biomeId, surface, "probability_desert_pull", pressure.forestPressure(), pressure.desertPressure());
         }
 
-        float forestSupport = Mth.clamp(treeRatio * 0.52F + lushRatio * 0.18F + waterRatio * 0.10F + pressure.forestPressure() * 0.20F, 0.0F, 1.0F);
-        float decayScore = Mth.clamp((1.0F - treeRatio) * 0.46F + (1.0F - lushRatio) * 0.14F + pressure.decayPressure() * 0.28F - pressure.forestPressure() * 0.12F + 0.18F, 0.0F, 1.0F);
-        if (treeRatio < 0.38F || decayScore > forestSupport + 0.12F) {
-            return new ScanResult(SuccessionMode.DECAY, true, decayScore, biomeId, surface, "forest_decay_pressure", pressure.forestPressure(), pressure.decayPressure());
+        if (isForest) {
+            float forestSupport = Mth.clamp(treeRatio * 0.52F + lushRatio * 0.18F + waterRatio * 0.10F + pressure.forestPressure() * 0.20F, 0.0F, 1.0F);
+            float desertThreat = Mth.clamp((1.0F - treeRatio) * 0.36F + pressure.desertPressure() * 0.42F - pressure.forestPressure() * 0.10F + 0.18F, 0.0F, 1.0F);
+            if (desertThreat > forestSupport + 0.10F) {
+                return new ScanResult(SuccessionMode.FOREST_RETREAT, true, desertThreat, biomeId, surface, "desert_pressure_on_forest", pressure.forestPressure(), pressure.desertPressure());
+            }
+            return new ScanResult(SuccessionMode.FOREST_STABLE, false, forestSupport, biomeId, surface, "forest_holding_ground", pressure.forestPressure(), pressure.desertPressure());
         }
 
-        return new ScanResult(SuccessionMode.STABLE, false, forestSupport, biomeId, surface, "forest_holding_ground", pressure.forestPressure(), pressure.decayPressure());
+        float desertSupport = Mth.clamp((groundState.is(Blocks.SAND) ? 0.45F : 0.18F) + pressure.desertPressure() * 0.30F + (1.0F - waterRatio) * 0.10F, 0.0F, 1.0F);
+        float forestThreat = Mth.clamp(pressure.forestPressure() * 0.40F + waterRatio * 0.12F + lushRatio * 0.12F - pressure.desertPressure() * 0.10F + 0.12F, 0.0F, 1.0F);
+        if (forestThreat > desertSupport + 0.10F) {
+            return new ScanResult(SuccessionMode.DESERT_RETREAT, true, forestThreat, biomeId, surface, "forest_pressure_on_desert", pressure.forestPressure(), pressure.desertPressure());
+        }
+        return new ScanResult(SuccessionMode.DESERT_STABLE, false, desertSupport, biomeId, surface, "desert_holding_ground", pressure.forestPressure(), pressure.desertPressure());
     }
 
     private static NeighborPressure sampleNeighborPressure(ServerLevel level, ChunkPos chunkPos) {
         int forestNeighbors = 0;
-        int decayNeighbors = 0;
+        int desertNeighbors = 0;
         int totalNeighbors = 0;
         PrototypeSuccessionSavedData data = PrototypeSuccessionSavedData.get(level);
 
@@ -528,8 +537,11 @@ final class PrototypeSuccessionSystem {
                     if (neighborState != null && neighborState.completed()) {
                         forestNeighbors++;
                     }
-                } else if (level.getBiome(neighborSurface).is(Biomes.PLAINS)) {
-                    decayNeighbors++;
+                } else if (level.getBiome(neighborSurface).is(Biomes.DESERT)) {
+                    PrototypeChunkState neighborState = data.get(neighborPos);
+                    if (neighborState != null && neighborState.completed()) {
+                        desertNeighbors++;
+                    }
                 }
             }
         }
@@ -539,7 +551,7 @@ final class PrototypeSuccessionSystem {
         }
         return new NeighborPressure(
                 Mth.clamp((float) forestNeighbors / (float) totalNeighbors, 0.0F, 1.0F),
-                Mth.clamp((float) decayNeighbors / (float) totalNeighbors, 0.0F, 1.0F));
+                Mth.clamp((float) desertNeighbors / (float) totalNeighbors, 0.0F, 1.0F));
     }
 
     private static boolean containsNearbyTree(ServerLevel level, BlockPos center, int radius) {
@@ -566,14 +578,23 @@ final class PrototypeSuccessionSystem {
             return;
         }
 
-        if (state.progress() >= EARLY_STAGE_THRESHOLD && !state.earlyMarkersPlaced()) {
-            logEvent(level, chunkPos, "stage_markers", "placing early-stage vegetation markers across chunk");
-            placeEarlyMarkers(level, chunkPos);
+        float magnitude = Math.abs(state.progress());
+        if (magnitude >= EARLY_STAGE_THRESHOLD && !state.earlyMarkersPlaced()) {
+            logEvent(level, chunkPos, "stage_markers", "placing early-stage {} markers across chunk", state.progress() >= 0.0F ? "forest" : "desert");
+            if (state.progress() >= 0.0F) {
+                placeEarlyMarkers(level, chunkPos);
+            } else {
+                placeEarlyDesertMarkers(level, chunkPos);
+            }
             state.setEarlyMarkersPlaced(true);
         }
-        if (state.progress() >= MID_STAGE_THRESHOLD && !state.midMarkersPlaced()) {
-            logEvent(level, chunkPos, "stage_markers", "placing mid-stage vegetation markers across chunk");
-            placeMidMarkers(level, chunkPos);
+        if (magnitude >= MID_STAGE_THRESHOLD && !state.midMarkersPlaced()) {
+            logEvent(level, chunkPos, "stage_markers", "placing mid-stage {} markers across chunk", state.progress() >= 0.0F ? "forest" : "desert");
+            if (state.progress() >= 0.0F) {
+                placeMidMarkers(level, chunkPos);
+            } else {
+                placeMidDesertMarkers(level, chunkPos);
+            }
             state.setMidMarkersPlaced(true);
         }
     }
@@ -591,32 +612,52 @@ final class PrototypeSuccessionSystem {
         placeRandomPlants(level, chunkPos, random, Blocks.SHORT_GRASS.defaultBlockState(), 4);
     }
 
+    private static void placeEarlyDesertMarkers(ServerLevel level, ChunkPos chunkPos) {
+        RandomSource random = createChunkRandom(level, chunkPos, 41L);
+        placeRandomSurfaceBlocks(level, chunkPos, random, Blocks.COARSE_DIRT.defaultBlockState(), 5);
+        placeRandomPlants(level, chunkPos, random, Blocks.DEAD_BUSH.defaultBlockState(), 2);
+    }
+
+    private static void placeMidDesertMarkers(ServerLevel level, ChunkPos chunkPos) {
+        RandomSource random = createChunkRandom(level, chunkPos, 53L);
+        placeRandomSurfaceBlocks(level, chunkPos, random, Blocks.SAND.defaultBlockState(), 6);
+        placeRandomPlants(level, chunkPos, random, Blocks.DEAD_BUSH.defaultBlockState(), 3);
+    }
+
     private static void tryComplete(ServerLevel level, ChunkPos chunkPos, PrototypeChunkState state) {
-        if (state.completed() || state.progress() < 1.0F || ACTIVE_CONVERSIONS.containsKey(chunkPos.toLong())) {
+        if (state.completed() || Math.abs(state.progress()) < 1.0F || ACTIVE_CONVERSIONS.containsKey(chunkPos.toLong())) {
             return;
         }
 
-        logEvent(level, chunkPos, "completion_queue", "growth progress reached {} and queued an outward conversion animation {} -> {} over {} ticks",
-                state.progress(),
-                SOURCE_BIOME,
-                TARGET_BIOME,
-                CONVERSION_ANIMATION_TICKS);
-        state.setLastScanReason("animating_conversion");
-        queueConversionAnimation(level, chunkPos, ConversionKind.ADVANCE);
+        if (state.progress() > 0.0F) {
+            logEvent(level, chunkPos, "completion_queue", "positive progress reached {} and queued an outward conversion animation {} -> {} over {} ticks",
+                    state.progress(), MID_BIOME, POSITIVE_TARGET_BIOME, CONVERSION_ANIMATION_TICKS);
+            state.setLastScanReason("animating_forest_conversion");
+            queueConversionAnimation(level, chunkPos, ConversionKind.TO_FOREST);
+        } else {
+            logEvent(level, chunkPos, "completion_queue", "negative progress reached {} and queued an outward conversion animation {} -> {} over {} ticks",
+                    state.progress(), MID_BIOME, NEGATIVE_TARGET_BIOME, CONVERSION_ANIMATION_TICKS);
+            state.setLastScanReason("animating_desert_conversion");
+            queueConversionAnimation(level, chunkPos, ConversionKind.TO_DESERT);
+        }
     }
 
     private static void tryCollapse(ServerLevel level, ChunkPos chunkPos, PrototypeChunkState state) {
-        if (!state.completed() || state.progress() > 0.0F || ACTIVE_CONVERSIONS.containsKey(chunkPos.toLong())) {
+        if (!state.completed() || ACTIVE_CONVERSIONS.containsKey(chunkPos.toLong())) {
             return;
         }
 
-        logEvent(level, chunkPos, "collapse_queue", "forest health dropped to {} and queued a retreat animation {} -> {} over {} ticks",
-                state.progress(),
-                TARGET_BIOME,
-                SOURCE_BIOME,
-                CONVERSION_ANIMATION_TICKS);
-        state.setLastScanReason("animating_retreat");
-        queueConversionAnimation(level, chunkPos, ConversionKind.RETREAT);
+        if (state.progress() <= 0.0F && level.getBiome(getSurfaceCenter(level, chunkPos)).is(Biomes.FOREST)) {
+            logEvent(level, chunkPos, "collapse_queue", "forest pressure dropped to {} and queued retreat animation {} -> {} over {} ticks",
+                    state.progress(), POSITIVE_TARGET_BIOME, MID_BIOME, CONVERSION_ANIMATION_TICKS);
+            state.setLastScanReason("animating_forest_retreat");
+            queueConversionAnimation(level, chunkPos, ConversionKind.FOREST_TO_PLAINS);
+        } else if (state.progress() >= 0.0F && level.getBiome(getSurfaceCenter(level, chunkPos)).is(Biomes.DESERT)) {
+            logEvent(level, chunkPos, "collapse_queue", "desert pressure dropped to {} and queued retreat animation {} -> {} over {} ticks",
+                    state.progress(), NEGATIVE_TARGET_BIOME, MID_BIOME, CONVERSION_ANIMATION_TICKS);
+            state.setLastScanReason("animating_desert_retreat");
+            queueConversionAnimation(level, chunkPos, ConversionKind.DESERT_TO_PLAINS);
+        }
     }
 
     private static boolean runFillBiome(ServerLevel level, ChunkPos chunkPos, String targetBiome, String replaceBiome) {
@@ -745,8 +786,8 @@ final class PrototypeSuccessionSystem {
         while (nextLayer <= targetLayer) {
             LayerResult layerResult = processConversionLayer(level, animation, nextLayer);
             if (!layerResult.success()) {
-                state.setProgress(animation.kind() == ConversionKind.ADVANCE ? 0.95F : 0.05F);
-                state.setLastScanReason(animation.kind() == ConversionKind.ADVANCE ? "fillbiome_failed" : "retreat_failed");
+                state.setProgress(animation.kind().fallbackProgress());
+                state.setLastScanReason(animation.kind().failureReason());
                 data.setDirty();
                 logEvent(level, chunkPos, "conversion_failed", "{} layer {} failed; progress rolled back to {}", animation.kind().logName(), nextLayer, state.progress());
                 return AnimationTickResult.done();
@@ -763,7 +804,7 @@ final class PrototypeSuccessionSystem {
         }
 
         animation = animation.withProgress(nextLayer, nextElapsedTick, processedLayers == 0 ? animation.lastAnimatedLayer() : nextLayer - 1);
-        state.setLastScanReason(animation.kind() == ConversionKind.ADVANCE ? "animating_conversion" : "animating_retreat");
+        state.setLastScanReason(animation.kind().activeReason());
         data.setDirty();
 
         logEvent(level, chunkPos, "conversion_tick", "{} tick {}/{} processedLayers={} currentLayer={} biomeChanged={} surfaceChanges={}",
@@ -779,9 +820,9 @@ final class PrototypeSuccessionSystem {
             return AnimationTickResult.running(animation);
         }
 
-        if (animation.kind() == ConversionKind.ADVANCE) {
+        if (animation.kind() == ConversionKind.TO_FOREST) {
             if (Config.ENABLE_VISUAL_MARKERS.get()) {
-                logEvent(level, chunkPos, "conversion_finish_decorate", "final advance pass reached edge; applying forest re-decoration");
+                logEvent(level, chunkPos, "conversion_finish_decorate", "final forest pass reached edge; applying forest re-decoration");
                 decorateCompletedChunk(level, chunkPos);
             }
 
@@ -789,13 +830,27 @@ final class PrototypeSuccessionSystem {
             state.setProgress(1.0F);
             state.setLastScanReason("converted_to_forest");
             data.setDirty();
-            logEvent(level, chunkPos, "conversion_completed", "outward forest conversion completed successfully; biome should now be {}", TARGET_BIOME);
+            logEvent(level, chunkPos, "conversion_completed", "outward forest conversion completed successfully; biome should now be {}", POSITIVE_TARGET_BIOME);
+            return AnimationTickResult.done();
+        }
+
+        if (animation.kind() == ConversionKind.TO_DESERT) {
+            if (Config.ENABLE_VISUAL_MARKERS.get()) {
+                logEvent(level, chunkPos, "conversion_finish_decorate", "final desert pass reached edge; applying desert re-decoration");
+                decorateDesertChunk(level, chunkPos);
+            }
+
+            state.setCompleted(true);
+            state.setProgress(-1.0F);
+            state.setLastScanReason("converted_to_desert");
+            data.setDirty();
+            logEvent(level, chunkPos, "conversion_completed", "outward desert conversion completed successfully; biome should now be {}", NEGATIVE_TARGET_BIOME);
             return AnimationTickResult.done();
         }
 
         if (Config.ENABLE_VISUAL_MARKERS.get()) {
-            logEvent(level, chunkPos, "conversion_finish_decay", "final retreat pass reached edge; applying decay cleanup");
-            decorateDecayedChunk(level, chunkPos);
+            logEvent(level, chunkPos, "conversion_finish_decay", "final retreat pass reached edge; applying plains cleanup");
+            decorateRecoveredPlainsChunk(level, chunkPos);
         }
 
         state.setCompleted(false);
@@ -803,7 +858,7 @@ final class PrototypeSuccessionSystem {
         state.setLastScanReason("converted_to_plains");
         resetMarkers(state);
         data.setDirty();
-        logEvent(level, chunkPos, "conversion_completed", "outward retreat completed successfully; biome should now be {}", SOURCE_BIOME);
+        logEvent(level, chunkPos, "conversion_completed", "outward retreat completed successfully; biome should now be {}", MID_BIOME);
         return AnimationTickResult.done();
     }
 
@@ -821,8 +876,8 @@ final class PrototypeSuccessionSystem {
 
         logEvent(level, chunkPos, "conversion_layer", "processing {} layer {} with bounds x={}..{} z={}..{}", animation.kind().logName(), layer, minX, maxX, minZ, maxZ);
         if (Config.ENABLE_BIOME_SWAP.get()) {
-            String targetBiome = animation.kind() == ConversionKind.ADVANCE ? TARGET_BIOME : SOURCE_BIOME;
-            String replaceBiome = animation.kind() == ConversionKind.ADVANCE ? SOURCE_BIOME : TARGET_BIOME;
+            String targetBiome = animation.kind().targetBiome();
+            String replaceBiome = animation.kind().replaceBiome();
             if (layer == 0) {
                 boolean stripChanged = runFillBiomeArea(level, chunkPos, targetBiome, replaceBiome, minX, maxX, minZ, maxZ, animation.kind().eventPrefix() + "_layer_" + layer);
                 biomeChanged |= stripChanged;
@@ -836,11 +891,14 @@ final class PrototypeSuccessionSystem {
             }
         }
 
-        int surfaceChanges = animation.kind() == ConversionKind.ADVANCE
-                ? animateSurfaceLayer(level, chunkPos, animation, layer)
-                : animateDecaySurfaceLayer(level, chunkPos, animation, layer);
-        int animatedTrees = animation.kind() == ConversionKind.ADVANCE ? growAnimatedTreesOnLayer(level, chunkPos, animation, layer) : 0;
-        int removedTrees = animation.kind() == ConversionKind.RETREAT ? removeDecayedTreesOnLayer(level, chunkPos, animation, layer) : 0;
+        int surfaceChanges = switch (animation.kind()) {
+            case TO_FOREST -> animateForestSurfaceLayer(level, chunkPos, animation, layer);
+            case TO_DESERT -> animateDesertAdvanceLayer(level, chunkPos, animation, layer);
+            case FOREST_TO_PLAINS -> animateForestRetreatLayer(level, chunkPos, animation, layer);
+            case DESERT_TO_PLAINS -> animateDesertRetreatLayer(level, chunkPos, animation, layer);
+        };
+        int animatedTrees = animation.kind() == ConversionKind.TO_FOREST ? growAnimatedTreesOnLayer(level, chunkPos, animation, layer) : 0;
+        int removedTrees = animation.kind() == ConversionKind.FOREST_TO_PLAINS ? removeDecayedTreesOnLayer(level, chunkPos, animation, layer) : 0;
         logEvent(level, chunkPos, "conversion_layer_result", "{} layer {} finished with biomeChanged={} surfaceChanges={} animatedTrees={} removedTrees={}",
                 animation.kind().logName(),
                 layer,
@@ -851,7 +909,7 @@ final class PrototypeSuccessionSystem {
         return new LayerResult(true, biomeChanged, surfaceChanges);
     }
 
-    private static int animateSurfaceLayer(ServerLevel level, ChunkPos chunkPos, ConversionAnimation animation, int layer) {
+    private static int animateForestSurfaceLayer(ServerLevel level, ChunkPos chunkPos, ConversionAnimation animation, int layer) {
         int changed = 0;
         if (!Config.ENABLE_VISUAL_MARKERS.get()) {
             return changed;
@@ -879,7 +937,7 @@ final class PrototypeSuccessionSystem {
         return changed;
     }
 
-    private static int animateDecaySurfaceLayer(ServerLevel level, ChunkPos chunkPos, ConversionAnimation animation, int layer) {
+    private static int animateForestRetreatLayer(ServerLevel level, ChunkPos chunkPos, ConversionAnimation animation, int layer) {
         int changed = 0;
         if (!Config.ENABLE_VISUAL_MARKERS.get()) {
             return changed;
@@ -905,6 +963,32 @@ final class PrototypeSuccessionSystem {
         }
 
         return changed;
+    }
+
+    private static int animateDesertAdvanceLayer(ServerLevel level, ChunkPos chunkPos, ConversionAnimation animation, int layer) {
+        int changed = 0;
+        int minX = Math.max(chunkPos.getMinBlockX(), animation.centerX() - layer);
+        int maxX = Math.min(chunkPos.getMaxBlockX(), animation.centerX() + layer);
+        int minZ = Math.max(chunkPos.getMinBlockZ(), animation.centerZ() - layer);
+        int maxZ = Math.min(chunkPos.getMaxBlockZ(), animation.centerZ() + layer);
+
+        for (int x = minX; x <= maxX; x++) {
+            changed += animateDesertAdvanceColumn(level, chunkPos, x, minZ, layer);
+            if (maxZ != minZ) {
+                changed += animateDesertAdvanceColumn(level, chunkPos, x, maxZ, layer);
+            }
+        }
+        for (int z = minZ + 1; z <= maxZ - 1; z++) {
+            changed += animateDesertAdvanceColumn(level, chunkPos, minX, z, layer);
+            if (maxX != minX) {
+                changed += animateDesertAdvanceColumn(level, chunkPos, maxX, z, layer);
+            }
+        }
+        return changed;
+    }
+
+    private static int animateDesertRetreatLayer(ServerLevel level, ChunkPos chunkPos, ConversionAnimation animation, int layer) {
+        return animateForestRetreatLayer(level, chunkPos, animation, layer);
     }
 
     private static int animateSurfaceColumn(ServerLevel level, ChunkPos chunkPos, int x, int z, int layer) {
@@ -964,6 +1048,35 @@ final class PrototypeSuccessionSystem {
         } else if (topState.isAir() && random.nextInt(4) == 0) {
             BlockState cover = random.nextBoolean() ? Blocks.SHORT_GRASS.defaultBlockState() : Blocks.FERN.defaultBlockState();
             if (cover.canSurvive(level, topPos) && placeSurfaceCover(level, chunkPos, topPos, cover, "decay_sparse_cover")) {
+                changed++;
+            }
+        }
+
+        return changed;
+    }
+
+    private static int animateDesertAdvanceColumn(ServerLevel level, ChunkPos chunkPos, int x, int z, int layer) {
+        RandomSource random = RandomSource.create(level.getSeed() ^ (long) x * 471977L ^ (long) z * 8191L ^ ((long) layer << 14));
+        BlockPos ground = getSurface(level, x, z);
+        BlockPos topPos = ground.above();
+        BlockState groundState = level.getBlockState(ground);
+        int changed = 0;
+
+        if (!isDesertSoil(groundState)) {
+            BlockState replacement = random.nextInt(5) == 0 ? Blocks.COARSE_DIRT.defaultBlockState() : Blocks.SAND.defaultBlockState();
+            if (setSurfaceBlock(level, chunkPos, ground, replacement, "desert_surface_shift")) {
+                changed++;
+            }
+        }
+
+        BlockState topState = level.getBlockState(topPos);
+        if (isTreePlacementBlocker(topState)) {
+            logEvent(level, chunkPos, "desert_cover_clear", "clearing {} at {} during desert advance", topState, topPos);
+            level.setBlockAndUpdate(topPos, Blocks.AIR.defaultBlockState());
+            changed++;
+        } else if (topState.isAir() && random.nextInt(4) == 0) {
+            BlockState cover = random.nextInt(5) == 0 ? Blocks.CACTUS.defaultBlockState() : Blocks.DEAD_BUSH.defaultBlockState();
+            if (cover.canSurvive(level, topPos) && placeSurfaceCover(level, chunkPos, topPos, cover, "desert_cover")) {
                 changed++;
             }
         }
@@ -1122,12 +1235,20 @@ final class PrototypeSuccessionSystem {
         logEvent(level, chunkPos, "decorate_done", "forest re-decoration finished with {} successful placed-feature passes and {} surface changes", successfulPlacements, surfaceChanges);
     }
 
-    private static void decorateDecayedChunk(ServerLevel level, ChunkPos chunkPos) {
-        logEvent(level, chunkPos, "decay_decorate_start", "starting decay cleanup for retreating forest chunk");
+    private static void decorateRecoveredPlainsChunk(ServerLevel level, ChunkPos chunkPos) {
+        logEvent(level, chunkPos, "plains_recover_start", "starting plains recovery cleanup for retreating chunk");
         int removedTrees = clearChunkTrees(level, chunkPos, 10);
         int surfaceChanges = restorePlainSurface(level, chunkPos);
         level.getChunk(chunkPos.x, chunkPos.z).setUnsaved(true);
-        logEvent(level, chunkPos, "decay_decorate_done", "decay cleanup removed {} tree blocks and restored {} surface columns", removedTrees, surfaceChanges);
+        logEvent(level, chunkPos, "plains_recover_done", "plains recovery removed {} tree blocks and restored {} surface columns", removedTrees, surfaceChanges);
+    }
+
+    private static void decorateDesertChunk(ServerLevel level, ChunkPos chunkPos) {
+        logEvent(level, chunkPos, "desert_decorate_start", "starting desert decoration for converted chunk");
+        int removedTrees = clearChunkTrees(level, chunkPos, 10);
+        int surfaceChanges = applyDesertFloorVariation(level, chunkPos);
+        level.getChunk(chunkPos.x, chunkPos.z).setUnsaved(true);
+        logEvent(level, chunkPos, "desert_decorate_done", "desert decoration removed {} tree blocks and changed {} surface columns", removedTrees, surfaceChanges);
     }
 
     private static int clearChunkTrees(ServerLevel level, ChunkPos chunkPos, int maxHeight) {
@@ -1155,7 +1276,7 @@ final class PrototypeSuccessionSystem {
             for (int z = chunkPos.getMinBlockZ(); z <= chunkPos.getMaxBlockZ(); z++) {
                 BlockPos ground = getSurface(level, x, z);
                 BlockState groundState = level.getBlockState(ground);
-                if (groundState.is(Blocks.PODZOL) || groundState.is(Blocks.MOSS_BLOCK) || groundState.is(Blocks.ROOTED_DIRT)) {
+                if (groundState.is(Blocks.PODZOL) || groundState.is(Blocks.MOSS_BLOCK) || groundState.is(Blocks.ROOTED_DIRT) || groundState.is(Blocks.SAND) || groundState.is(Blocks.RED_SAND)) {
                     if (setSurfaceBlock(level, chunkPos, ground, random.nextInt(5) == 0 ? Blocks.COARSE_DIRT.defaultBlockState() : Blocks.GRASS_BLOCK.defaultBlockState(), "decay_restore_surface")) {
                         changed++;
                     }
@@ -1165,6 +1286,32 @@ final class PrototypeSuccessionSystem {
                 BlockState topState = level.getBlockState(topPos);
                 if (isTreePlacementBlocker(topState)) {
                     level.setBlockAndUpdate(topPos, Blocks.AIR.defaultBlockState());
+                }
+            }
+        }
+        return changed;
+    }
+
+    private static int applyDesertFloorVariation(ServerLevel level, ChunkPos chunkPos) {
+        int changed = 0;
+        RandomSource random = createChunkRandom(level, chunkPos, 307L);
+        for (int x = chunkPos.getMinBlockX(); x <= chunkPos.getMaxBlockX(); x++) {
+            for (int z = chunkPos.getMinBlockZ(); z <= chunkPos.getMaxBlockZ(); z++) {
+                BlockPos ground = getSurface(level, x, z);
+                BlockState replacement = random.nextInt(6) == 0 ? Blocks.COARSE_DIRT.defaultBlockState() : Blocks.SAND.defaultBlockState();
+                if (!level.getBlockState(ground).is(replacement.getBlock()) && setSurfaceBlock(level, chunkPos, ground, replacement, "desert_finalize_surface")) {
+                    changed++;
+                }
+
+                BlockPos topPos = ground.above();
+                BlockState topState = level.getBlockState(topPos);
+                if (isTreePlacementBlocker(topState)) {
+                    level.setBlockAndUpdate(topPos, Blocks.AIR.defaultBlockState());
+                } else if (topState.isAir() && random.nextInt(12) == 0) {
+                    BlockState cover = random.nextInt(5) == 0 ? Blocks.CACTUS.defaultBlockState() : Blocks.DEAD_BUSH.defaultBlockState();
+                    if (cover.canSurvive(level, topPos)) {
+                        level.setBlockAndUpdate(topPos, cover);
+                    }
                 }
             }
         }
@@ -1210,6 +1357,13 @@ final class PrototypeSuccessionSystem {
     private static void placeRandomPlants(ServerLevel level, ChunkPos chunkPos, RandomSource random, BlockState plantState, int attempts) {
         for (int i = 0; i < attempts; i++) {
             placePlantIfPossible(level, randomChunkBlock(chunkPos, random, 1), plantState);
+        }
+    }
+
+    private static void placeRandomSurfaceBlocks(ServerLevel level, ChunkPos chunkPos, RandomSource random, BlockState surfaceState, int attempts) {
+        for (int i = 0; i < attempts; i++) {
+            BlockPos ground = findGround(level, randomChunkBlock(chunkPos, random, 1));
+            setSurfaceBlock(level, chunkPos, ground, surfaceState, "marker_surface");
         }
     }
 
@@ -1314,6 +1468,14 @@ final class PrototypeSuccessionSystem {
                 || state.is(Blocks.MOSS_BLOCK);
     }
 
+    private static boolean isDesertSoil(BlockState state) {
+        return state.is(Blocks.SAND)
+                || state.is(Blocks.RED_SAND)
+                || state.is(Blocks.SANDSTONE)
+                || state.is(Blocks.COARSE_DIRT)
+                || state.is(Blocks.DIRT);
+    }
+
     private static boolean isTreePlacementBlocker(BlockState state) {
         return state.is(Blocks.SHORT_GRASS)
                 || state.is(Blocks.TALL_GRASS)
@@ -1355,6 +1517,31 @@ final class PrototypeSuccessionSystem {
             level.setBlockAndUpdate(pos, Blocks.AIR.defaultBlockState());
         }
         return true;
+    }
+
+    private static float moveTowardZero(float value, float amount) {
+        if (value > 0.0F) {
+            return Math.max(0.0F, value - amount);
+        }
+        if (value < 0.0F) {
+            return Math.min(0.0F, value + amount);
+        }
+        return 0.0F;
+    }
+
+    private static BranchRoll rollPlainDirection(ServerLevel level, ChunkPos chunkPos, NeighborPressure pressure) {
+        long cycle = level.getGameTime() / Config.PROTOTYPE_SCAN_INTERVAL_TICKS.get();
+        RandomSource random = RandomSource.create(level.getSeed() ^ chunkPos.toLong() ^ (cycle * 1_315_423_911L));
+        float bias = ((chunkPos.x * 37 + chunkPos.z * 17) & 15) / 15.0F * 0.30F - 0.15F;
+        float activityChance = Mth.clamp(0.45F + Math.max(pressure.forestPressure(), pressure.desertPressure()) * 0.35F + Math.abs(bias) * 0.20F, 0.20F, 0.90F);
+        if (random.nextFloat() > activityChance) {
+            return new BranchRoll(false, 0, activityChance * 0.45F);
+        }
+
+        float forestWeight = Mth.clamp(0.5F + (pressure.forestPressure() - pressure.desertPressure()) * 0.45F + bias, 0.05F, 0.95F);
+        int direction = random.nextFloat() < forestWeight ? 1 : -1;
+        float score = Mth.clamp(activityChance * (0.70F + Math.abs(forestWeight - 0.5F) * 0.90F), 0.05F, 1.0F);
+        return new BranchRoll(true, direction, score);
     }
 
     private static BlockPos randomChunkBlock(ChunkPos chunkPos, RandomSource random, int margin) {
@@ -1446,28 +1633,72 @@ final class PrototypeSuccessionSystem {
 
     private enum SuccessionMode {
         NONE,
-        GROWTH,
-        DECAY,
-        STABLE
+        PLAINS_TO_FOREST,
+        PLAINS_TO_DESERT,
+        FOREST_STABLE,
+        FOREST_RETREAT,
+        DESERT_STABLE,
+        DESERT_RETREAT
     }
 
     private enum ConversionKind {
-        ADVANCE,
-        RETREAT;
+        TO_FOREST(POSITIVE_TARGET_BIOME, MID_BIOME, "advance_forest", "animating_forest_conversion", "forest_fill_failed", 0.95F),
+        TO_DESERT(NEGATIVE_TARGET_BIOME, MID_BIOME, "advance_desert", "animating_desert_conversion", "desert_fill_failed", -0.95F),
+        FOREST_TO_PLAINS(MID_BIOME, POSITIVE_TARGET_BIOME, "retreat_forest", "animating_forest_retreat", "forest_retreat_failed", 0.05F),
+        DESERT_TO_PLAINS(MID_BIOME, NEGATIVE_TARGET_BIOME, "retreat_desert", "animating_desert_retreat", "desert_retreat_failed", -0.05F);
+
+        private final String targetBiome;
+        private final String replaceBiome;
+        private final String logName;
+        private final String activeReason;
+        private final String failureReason;
+        private final float fallbackProgress;
+
+        ConversionKind(String targetBiome, String replaceBiome, String logName, String activeReason, String failureReason, float fallbackProgress) {
+            this.targetBiome = targetBiome;
+            this.replaceBiome = replaceBiome;
+            this.logName = logName;
+            this.activeReason = activeReason;
+            this.failureReason = failureReason;
+            this.fallbackProgress = fallbackProgress;
+        }
 
         String logName() {
-            return this == ADVANCE ? "advance" : "retreat";
+            return logName;
         }
 
         String eventPrefix() {
-            return this == ADVANCE ? "fillbiome" : "retreatbiome";
+            return logName;
+        }
+
+        String targetBiome() {
+            return targetBiome;
+        }
+
+        String replaceBiome() {
+            return replaceBiome;
+        }
+
+        String activeReason() {
+            return activeReason;
+        }
+
+        String failureReason() {
+            return failureReason;
+        }
+
+        float fallbackProgress() {
+            return fallbackProgress;
         }
     }
 
-    private record NeighborPressure(float forestPressure, float decayPressure) {
+    private record NeighborPressure(float forestPressure, float desertPressure) {
     }
 
-    private record ScanResult(SuccessionMode mode, boolean eligible, float score, String biomeId, BlockPos surface, String reason, float forestPressure, float decayPressure) {
+    private record ScanResult(SuccessionMode mode, boolean eligible, float score, String biomeId, BlockPos surface, String reason, float forestPressure, float desertPressure) {
+    }
+
+    private record BranchRoll(boolean active, int direction, float score) {
     }
 
     private record LayerResult(boolean success, boolean biomeChanged, int surfaceChanges) {

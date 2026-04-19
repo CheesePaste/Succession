@@ -22,7 +22,7 @@ final class PrototypeChunkState {
 
     static PrototypeChunkState fromTag(CompoundTag tag) {
         PrototypeChunkState state = new PrototypeChunkState();
-        state.progress = Mth.clamp(tag.getFloat(PROGRESS_KEY), 0.0F, 1.0F);
+        state.progress = Mth.clamp(tag.getFloat(PROGRESS_KEY), -1.0F, 1.0F);
         state.lastScore = Mth.clamp(tag.getFloat(LAST_SCORE_KEY), 0.0F, 1.0F);
         state.lastScanTime = tag.getLong(LAST_SCAN_TIME_KEY);
         state.earlyMarkersPlaced = tag.getBoolean(EARLY_MARKERS_KEY);
@@ -49,7 +49,7 @@ final class PrototypeChunkState {
     }
 
     void setProgress(float progress) {
-        this.progress = Mth.clamp(progress, 0.0F, 1.0F);
+        this.progress = Mth.clamp(progress, -1.0F, 1.0F);
     }
 
     float lastScore() {
@@ -101,17 +101,19 @@ final class PrototypeChunkState {
     }
 
     String stageName() {
+        float magnitude = Math.abs(progress);
+        String prefix = progress > 0.0F ? "forest" : progress < 0.0F ? "desert" : "neutral";
         if (completed) {
-            return "converted";
+            return progress >= 0.0F ? "converted_forest" : "converted_desert";
         }
-        if (progress >= PrototypeSuccessionSystem.MID_STAGE_THRESHOLD) {
-            return "late";
+        if (magnitude >= PrototypeSuccessionSystem.MID_STAGE_THRESHOLD) {
+            return prefix + "_late";
         }
-        if (progress >= PrototypeSuccessionSystem.EARLY_STAGE_THRESHOLD) {
-            return "mid";
+        if (magnitude >= PrototypeSuccessionSystem.EARLY_STAGE_THRESHOLD) {
+            return prefix + "_mid";
         }
-        if (progress > 0.0F) {
-            return "early";
+        if (magnitude > 0.0F) {
+            return prefix + "_early";
         }
         return "dormant";
     }
