@@ -3,8 +3,12 @@ package com.s.succession;
 import com.mojang.brigadier.arguments.FloatArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -38,6 +42,10 @@ final class PrototypeSuccessionSystem {
     static final float MID_STAGE_THRESHOLD = 0.67F;
     private static final int MAX_FILL_HEIGHT_PER_PASS = 64;
     private static final int TRACKED_CHUNK_MARGIN = 1;
+    private static final int TARGET_CHUNKS_PER_PART = 12;
+    private static final int MIN_PART_RADIUS_CHUNKS = 2;
+    private static final int MAX_PART_RADIUS_CHUNKS = 5;
+    private static final float PART_RATE_VARIATION = 0.12F;
     private static final String SOURCE_BIOME = "minecraft:plains";
     private static final String TARGET_BIOME = "minecraft:forest";
 
@@ -74,8 +82,9 @@ final class PrototypeSuccessionSystem {
         }
 
         Set<Long> seenChunks = new HashSet<>();
-        int loadedChunkChecks = 0;
+        List<ChunkPos> loadedChunks = new ArrayList<>();
         int progressedChunks = 0;
+        int deferredChunks = 0;
         int viewDistance = event.getServer().getPlayerList().getViewDistance() + TRACKED_CHUNK_MARGIN;
         for (ServerPlayer player : event.getServer().getPlayerList().getPlayers()) {
             if (!player.serverLevel().dimension().equals(Level.OVERWORLD)) {
@@ -95,21 +104,40 @@ final class PrototypeSuccessionSystem {
                         continue;
                     }
 
-                    loadedChunkChecks++;
-                    ProgressResult result = progressChunk(player.serverLevel(), loadedChunk.getPos(), true);
-                    if (result.changed()) {
-                        progressedChunks++;
-                    }
+                    loadedChunks.add(loadedChunk.getPos());
                 }
+            }
+        }
+
+        if (loadedChunks.isEmpty()) {
+            return;
+        }
+
+        long scanCycle = gameTime / Config.PROTOTYPE_SCAN_INTERVAL_TICKS.get();
+        PartLayout partLayout = buildPartLayout(overworld, loadedChunks, scanCycle);
+        for (ChunkPos loadedChunkPos : loadedChunks) {
+            PartAssignment assignment = partLayout.assignmentFor(loadedChunkPos);
+            if (!assignment.dueThisCycle()) {
+                deferredChunks++;
+                continue;
+            }
+
+            ProgressResult result = progressChunk(overworld, loadedChunkPos, true, assignment);
+            if (result.changed()) {
+                progressedChunks++;
             }
         }
 
         if (Config.VERBOSE_LOGGING.get()) {
             Succession.LOGGER.info(
-                    "[Succession:scan_cycle:{}] scanned {} loaded chunks and advanced {} chunk states",
+                    "[Succession:scan_cycle:{}] scanned {} loaded chunks, scattered {} parts ({} active this cycle), deferred {} chunks, advanced {} chunk states with globalRate={}",
                     overworld.dimension().location(),
-                    loadedChunkChecks,
-                    progressedChunks);
+                    loadedChunks.size(),
+                    partLayout.partCount(),
+                    partLayout.activePartCount(),
+                    deferredChunks,
+                    progressedChunks,
+                    Config.PROTOTYPE_GLOBAL_RATE.get());
         }
     }
 
@@ -137,7 +165,7 @@ final class PrototypeSuccessionSystem {
         String reason = state == null ? "never_scanned" : state.lastScanReason();
         return String.format(
                 Locale.ROOT,
-                "[Succession] chunk=(%d,%d) biome=%s eligible=%s progress=%.0f%% storedScore=%.2f liveScore=%.2f stage=%s reason=%s path=%s -> %s",
+                "[Succession] chunk=(%d,%d) biome=%s eligible=%s progress=%.0f%% storedScore=%.2f liveScore=%.2f stage=%s reason=%s globalRate=%.2f path=%s -> %s",
                 chunkPos.x,
                 chunkPos.z,
                 scan.biomeId(),
@@ -147,6 +175,7 @@ final class PrototypeSuccessionSystem {
                 scan.score(),
                 stage,
                 reason,
+                Config.PROTOTYPE_GLOBAL_RATE.get(),
                 SOURCE_BIOME,
                 TARGET_BIOME);
     }
@@ -201,6 +230,11 @@ final class PrototypeSuccessionSystem {
     }
 
     private static ProgressResult progressChunk(ServerLevel level, ChunkPos chunkPos, boolean automaticTick) {
+        float manualRate = Mth.clamp(Config.PROTOTYPE_GLOBAL_RATE.get().floatValue(), 0.1F, 3.0F);
+        return progressChunk(level, chunkPos, automaticTick, PartAssignment.manual(manualRate));
+    }
+
+    private static ProgressResult progressChunk(ServerLevel level, ChunkPos chunkPos, boolean automaticTick, PartAssignment assignment) {
         PrototypeSuccessionSavedData data = PrototypeSuccessionSavedData.get(level);
         PrototypeChunkState state = data.getOrCreate(chunkPos);
         ScanResult scan = scanChunk(level, chunkPos);
@@ -214,34 +248,65 @@ final class PrototypeSuccessionSystem {
         state.setLastScore(scan.score());
         state.setLastScanReason(scan.reason());
 
+        float rateMultiplier = assignment.deltaMultiplier();
         if (scan.eligible() && !state.completed()) {
-            float delta = (float) (Config.PROTOTYPE_PROGRESS_PER_SCAN.get() * scan.score());
-            logEvent(level, chunkPos, "progress", "eligible scan produced delta={} previousProgress={} score={} reason={}", delta, state.progress(), scan.score(), scan.reason());
+            float delta = (float) (Config.PROTOTYPE_PROGRESS_PER_SCAN.get() * scan.score() * rateMultiplier);
+            logEvent(level, chunkPos, "progress", "eligible scan produced delta={} previousProgress={} score={} reason={} part={} center=({}, {}) radius={} localRate={} effectiveRate={} stride={} phase={}",
+                    delta,
+                    state.progress(),
+                    scan.score(),
+                    scan.reason(),
+                    assignment.partIdLabel(),
+                    assignment.centerChunkX(),
+                    assignment.centerChunkZ(),
+                    assignment.radiusChunks(),
+                    assignment.localRate(),
+                    assignment.effectiveRate(),
+                    assignment.cycleStride(),
+                    assignment.phaseOffset());
             state.setProgress(state.progress() + delta);
             applyStageMarkers(level, chunkPos, state);
             tryComplete(level, chunkPos, state);
         } else if (!state.completed()) {
-            float decay = Config.PROTOTYPE_DECAY_PER_SCAN.get().floatValue();
-            logEvent(level, chunkPos, "decay", "ineligible scan caused decay={} previousProgress={} reason={}", decay, state.progress(), scan.reason());
-            state.setProgress(state.progress() - Config.PROTOTYPE_DECAY_PER_SCAN.get().floatValue());
+            float decay = Config.PROTOTYPE_DECAY_PER_SCAN.get().floatValue() * rateMultiplier;
+            logEvent(level, chunkPos, "decay", "ineligible scan caused decay={} previousProgress={} reason={} part={} center=({}, {}) radius={} localRate={} effectiveRate={} stride={} phase={}",
+                    decay,
+                    state.progress(),
+                    scan.reason(),
+                    assignment.partIdLabel(),
+                    assignment.centerChunkX(),
+                    assignment.centerChunkZ(),
+                    assignment.radiusChunks(),
+                    assignment.localRate(),
+                    assignment.effectiveRate(),
+                    assignment.cycleStride(),
+                    assignment.phaseOffset());
+            state.setProgress(state.progress() - decay);
         }
 
         data.setDirty();
 
         if (Config.VERBOSE_LOGGING.get()) {
             Succession.LOGGER.info(
-                    "Prototype scan chunk=({}, {}) eligible={} score={} progress={} reason={}",
+                    "Prototype scan chunk=({}, {}) eligible={} score={} progress={} reason={} part={} center=({}, {}) radius={} effectiveRate={} stride={} phase={}",
                     chunkPos.x,
                     chunkPos.z,
                     scan.eligible(),
                     scan.score(),
                     state.progress(),
-                    scan.reason());
+                    scan.reason(),
+                    assignment.partIdLabel(),
+                    assignment.centerChunkX(),
+                    assignment.centerChunkZ(),
+                    assignment.radiusChunks(),
+                    assignment.effectiveRate(),
+                    assignment.cycleStride(),
+                    assignment.phaseOffset());
         }
 
         String message = String.format(
                 Locale.ROOT,
-                "[Succession] scanned chunk (%d,%d): biome=%s eligible=%s score=%.2f progress=%.0f%% stage=%s reason=%s",
+                "[Succession] scanned chunk (%d,%d): biome=%s eligible=%s score=%.2f progress=%.0f%% stage=%s reason=%s part=%s rate=%.2f stride=%d",
                 chunkPos.x,
                 chunkPos.z,
                 scan.biomeId(),
@@ -249,8 +314,72 @@ final class PrototypeSuccessionSystem {
                 scan.score(),
                 state.progress() * 100.0F,
                 state.stageName(),
-                scan.reason());
+                scan.reason(),
+                assignment.partIdLabel(),
+                assignment.effectiveRate(),
+                assignment.cycleStride());
         return new ProgressResult(true, message);
+    }
+
+    private static PartLayout buildPartLayout(ServerLevel level, List<ChunkPos> loadedChunks, long scanCycle) {
+        List<ChunkPos> sortedChunks = new ArrayList<>(loadedChunks);
+        sortedChunks.sort((left, right) -> {
+            if (left.x != right.x) {
+                return Integer.compare(left.x, right.x);
+            }
+            return Integer.compare(left.z, right.z);
+        });
+
+        int partCount = Mth.clamp(Mth.ceil((float) sortedChunks.size() / (float) TARGET_CHUNKS_PER_PART), 1, sortedChunks.size());
+        RandomSource random = RandomSource.create(level.getSeed() ^ (scanCycle * 971_761_241L) ^ ((long) sortedChunks.size() * 31L));
+        List<PartProfile> parts = new ArrayList<>(partCount);
+        for (int partId = 0; partId < partCount; partId++) {
+            float sampleOffset = (partId + random.nextFloat()) / (float) partCount;
+            int centerIndex = Mth.clamp((int) (sampleOffset * sortedChunks.size()), 0, sortedChunks.size() - 1);
+            ChunkPos center = sortedChunks.get(centerIndex);
+            int radius = Mth.nextInt(random, MIN_PART_RADIUS_CHUNKS, MAX_PART_RADIUS_CHUNKS);
+            float localRate = 1.0F + ((random.nextFloat() * 2.0F) - 1.0F) * PART_RATE_VARIATION;
+            float effectiveRate = Mth.clamp((float) Config.PROTOTYPE_GLOBAL_RATE.get().doubleValue() * localRate, 0.1F, 3.0F);
+            int cycleStride = computeCycleStride(effectiveRate);
+            int phaseOffset = cycleStride <= 1 ? 0 : random.nextInt(cycleStride);
+            parts.add(new PartProfile(partId, center, radius, localRate, effectiveRate, cycleStride, phaseOffset));
+        }
+
+        Map<Long, PartAssignment> assignments = new HashMap<>();
+        Set<Integer> activeParts = new HashSet<>();
+        for (ChunkPos chunkPos : sortedChunks) {
+            PartProfile part = selectPart(parts, chunkPos);
+            boolean dueThisCycle = part.isDue(scanCycle);
+            if (dueThisCycle) {
+                activeParts.add(part.partId());
+            }
+
+            assignments.put(chunkPos.toLong(), PartAssignment.fromProfile(part, dueThisCycle));
+        }
+
+        return new PartLayout(assignments, parts.size(), activeParts.size());
+    }
+
+    private static int computeCycleStride(float effectiveRate) {
+        if (effectiveRate >= 0.85F) {
+            return 1;
+        }
+        return Mth.clamp(Mth.ceil(0.85F / Math.max(0.1F, effectiveRate)), 2, 8);
+    }
+
+    private static PartProfile selectPart(List<PartProfile> parts, ChunkPos chunkPos) {
+        PartProfile selected = parts.get(0);
+        double bestScore = Double.MAX_VALUE;
+        for (PartProfile part : parts) {
+            double dx = chunkPos.x - part.center().x;
+            double dz = chunkPos.z - part.center().z;
+            double distanceScore = (dx * dx + dz * dz) / Math.max(1.0D, (double) part.radiusChunks() * (double) part.radiusChunks());
+            if (distanceScore < bestScore) {
+                bestScore = distanceScore;
+                selected = part;
+            }
+        }
+        return selected;
     }
 
     private static ScanResult scanChunk(ServerLevel level, ChunkPos chunkPos) {
@@ -596,6 +725,38 @@ final class PrototypeSuccessionSystem {
     private static RandomSource createChunkRandom(ServerLevel level, ChunkPos chunkPos, long salt) {
         long seed = level.getSeed() ^ (chunkPos.toLong() * 341873128712L) ^ salt;
         return RandomSource.create(seed);
+    }
+
+    private record PartProfile(int partId, ChunkPos center, int radiusChunks, float localRate, float effectiveRate, int cycleStride, int phaseOffset) {
+        boolean isDue(long scanCycle) {
+            return Math.floorMod(scanCycle + phaseOffset, cycleStride) == 0;
+        }
+    }
+
+    private record PartAssignment(String partIdLabel, int centerChunkX, int centerChunkZ, int radiusChunks, float localRate, float effectiveRate, int cycleStride, int phaseOffset, float deltaMultiplier, boolean dueThisCycle) {
+        static PartAssignment fromProfile(PartProfile profile, boolean dueThisCycle) {
+            return new PartAssignment(
+                    Integer.toString(profile.partId()),
+                    profile.center().x,
+                    profile.center().z,
+                    profile.radiusChunks(),
+                    profile.localRate(),
+                    profile.effectiveRate(),
+                    profile.cycleStride(),
+                    profile.phaseOffset(),
+                    profile.effectiveRate() * profile.cycleStride(),
+                    dueThisCycle);
+        }
+
+        static PartAssignment manual(float globalRate) {
+            return new PartAssignment("manual", 0, 0, 0, 1.0F, globalRate, 1, 0, globalRate, true);
+        }
+    }
+
+    private record PartLayout(Map<Long, PartAssignment> assignments, int partCount, int activePartCount) {
+        PartAssignment assignmentFor(ChunkPos chunkPos) {
+            return assignments.getOrDefault(chunkPos.toLong(), PartAssignment.manual(Mth.clamp(Config.PROTOTYPE_GLOBAL_RATE.get().floatValue(), 0.1F, 3.0F)));
+        }
     }
 
     private record ScanResult(boolean eligible, float score, String biomeId, BlockPos surface, String reason) {

@@ -13,6 +13,10 @@ public final class Config {
             .comment("How often the prototype system re-evaluates the player's current chunk.")
             .defineInRange("prototypeScanIntervalTicks", 200, 20, 24000);
 
+    public static final ModConfigSpec.DoubleValue PROTOTYPE_GLOBAL_RATE = BUILDER
+            .comment("Global pacing multiplier for prototype succession. Lower values spread part updates across more scan cycles; higher values make the whole loaded area evolve faster.")
+            .defineInRange("prototypeGlobalRate", 0.65D, 0.10D, 3.0D);
+
     public static final ModConfigSpec.DoubleValue PROTOTYPE_PROGRESS_PER_SCAN = BUILDER
             .comment("Base progress added to an eligible chunk each scan before the vegetation score multiplier.")
             .defineInRange("prototypeProgressPerScan", 0.22D, 0.01D, 1.0D);
