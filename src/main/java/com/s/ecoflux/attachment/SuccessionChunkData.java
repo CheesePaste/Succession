@@ -23,6 +23,7 @@ public final class SuccessionChunkData implements INBTSerializable<CompoundTag> 
     private static final String CURRENT_BIOME = "current_biome";
     private static final String TARGET_BIOME = "target_biome";
     private static final String PREVIOUS_BIOME = "previous_biome";
+    private static final String ACTIVE_PATH_ID = "active_path_id";
     private static final String PROGRESS = "progress";
     private static final String CONSUMING_VALUE = "consuming_value";
     private static final String MAX_PLANT_COUNT = "max_plant_count";
@@ -35,6 +36,7 @@ public final class SuccessionChunkData implements INBTSerializable<CompoundTag> 
     private @Nullable ResourceKey<Biome> currentBiome;
     private @Nullable ResourceKey<Biome> targetBiome;
     private @Nullable ResourceKey<Biome> previousBiome;
+    private @Nullable ResourceLocation activePathId;
     private double progress;
     private int consumingValue;
     private int maxPlantCount;
@@ -80,6 +82,15 @@ public final class SuccessionChunkData implements INBTSerializable<CompoundTag> 
 
     public void setProgress(double progress) {
         this.progress = progress;
+        markDirty();
+    }
+
+    public Optional<ResourceLocation> getActivePathId() {
+        return Optional.ofNullable(activePathId);
+    }
+
+    public void setActivePathId(@Nullable ResourceLocation activePathId) {
+        this.activePathId = activePathId;
         markDirty();
     }
 
@@ -146,6 +157,10 @@ public final class SuccessionChunkData implements INBTSerializable<CompoundTag> 
         return activePlants;
     }
 
+    public int getTotalPlantPoints() {
+        return activePlants.values().stream().mapToInt(ActivePlantRecord::pointValue).sum();
+    }
+
     public void trackPlant(ActivePlantRecord record) {
         activePlants.put(record.position(), record);
         currentPlantCount = activePlants.size();
@@ -161,7 +176,14 @@ public final class SuccessionChunkData implements INBTSerializable<CompoundTag> 
         return removed;
     }
 
+    public void clearTrackedPlants() {
+        activePlants.clear();
+        currentPlantCount = 0;
+        markDirty();
+    }
+
     public void clearRuntimeState() {
+        activePathId = null;
         progress = 0.0D;
         currentPlantCount = 0;
         lastEvaluationGameTime = 0L;
@@ -176,6 +198,9 @@ public final class SuccessionChunkData implements INBTSerializable<CompoundTag> 
         writeBiomeKey(tag, CURRENT_BIOME, currentBiome);
         writeBiomeKey(tag, TARGET_BIOME, targetBiome);
         writeBiomeKey(tag, PREVIOUS_BIOME, previousBiome);
+        if (activePathId != null) {
+            tag.putString(ACTIVE_PATH_ID, activePathId.toString());
+        }
         tag.putDouble(PROGRESS, progress);
         tag.putInt(CONSUMING_VALUE, consumingValue);
         tag.putInt(MAX_PLANT_COUNT, maxPlantCount);
@@ -201,6 +226,8 @@ public final class SuccessionChunkData implements INBTSerializable<CompoundTag> 
         currentBiome = readBiomeKey(tag, CURRENT_BIOME);
         targetBiome = readBiomeKey(tag, TARGET_BIOME);
         previousBiome = readBiomeKey(tag, PREVIOUS_BIOME);
+        String storedPathId = tag.getString(ACTIVE_PATH_ID);
+        activePathId = storedPathId.isEmpty() ? null : ResourceLocation.parse(storedPathId);
         progress = tag.getDouble(PROGRESS);
         consumingValue = tag.getInt(CONSUMING_VALUE);
         maxPlantCount = tag.getInt(MAX_PLANT_COUNT);

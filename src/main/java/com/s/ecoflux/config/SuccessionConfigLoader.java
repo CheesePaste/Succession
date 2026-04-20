@@ -22,9 +22,8 @@ import com.s.ecoflux.EcofluxConstants;
 
 public final class SuccessionConfigLoader extends SimpleJsonResourceReloadListener {
     public static final String DIRECTORY = "succession_paths";
-    public static final SuccessionConfigLoader INSTANCE = new SuccessionConfigLoader();
-
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
+    public static final SuccessionConfigLoader INSTANCE = new SuccessionConfigLoader();
 
     private SuccessionConfigLoader() {
         super(GSON, DIRECTORY);
@@ -92,7 +91,11 @@ public final class SuccessionConfigLoader extends SimpleJsonResourceReloadListen
                 GsonHelper.getAsInt(chunkRulesObject, "consuming"),
                 GsonHelper.getAsInt(chunkRulesObject, "max_plant_count"),
                 GsonHelper.getAsDouble(chunkRulesObject, "queue_fill_factor", 2.0D),
-                parseIntRange(GsonHelper.getAsJsonObject(chunkRulesObject, "evaluation_interval_days"), "evaluation_interval_days"));
+                parseIntRange(GsonHelper.getAsJsonObject(chunkRulesObject, "evaluation_interval_days"), "evaluation_interval_days"),
+                GsonHelper.getAsInt(chunkRulesObject, "processing_interval_ticks", 20),
+                GsonHelper.getAsInt(chunkRulesObject, "evaluation_interval_ticks", 0),
+                GsonHelper.getAsDouble(chunkRulesObject, "positive_progress_step", 0.5D),
+                GsonHelper.getAsDouble(chunkRulesObject, "negative_progress_step", 0.25D));
     }
 
     private List<PlantDefinition> parsePlants(JsonArray plantArray) {

@@ -14,66 +14,37 @@
       "max": 0.95
     },
     "downfall": {
-      "min": 0.45,
+      "min": 0.4,
       "max": 0.9
     }
   },
   "chunk_rules": {
-    "consuming": 12,
-    "max_plant_count": 24,
-    "queue_fill_factor": 2.0,
+    "consuming": 4,
+    "max_plant_count": 1,
+    "queue_fill_factor": 1.0,
+    "processing_interval_ticks": 5,
+    "evaluation_interval_ticks": 40,
+    "positive_progress_step": 1.0,
+    "negative_progress_step": 0.5,
     "evaluation_interval_days": {
-      "min": 3,
-      "max": 5
+      "min": 1,
+      "max": 1
     }
   },
   "plants": [
     {
-      "plant_id": "minecraft:short_grass",
-      "category": "ground_cover",
-      "weight": 8,
-      "point_value": 1,
-      "max_age_ticks": 48000,
-      "spawn_rules": {
-        "placement": "surface",
-        "require_sky": true,
-        "max_local_density": 8,
-        "allowed_base_blocks": [
-          "minecraft:grass_block",
-          "minecraft:dirt"
-        ]
-      }
-    },
-    {
       "plant_id": "minecraft:dandelion",
       "category": "flower",
-      "weight": 5,
-      "point_value": 2,
+      "weight": 1,
+      "point_value": 4,
       "max_age_ticks": 72000,
       "spawn_rules": {
         "placement": "surface",
         "require_sky": true,
-        "max_local_density": 5,
+        "max_local_density": 1,
         "allowed_base_blocks": [
           "minecraft:grass_block",
           "minecraft:dirt"
-        ]
-      }
-    },
-    {
-      "plant_id": "minecraft:oak_sapling",
-      "category": "tree",
-      "weight": 3,
-      "point_value": 4,
-      "max_age_ticks": 144000,
-      "spawn_rules": {
-        "placement": "surface",
-        "require_sky": true,
-        "max_local_density": 3,
-        "allowed_base_blocks": [
-          "minecraft:grass_block",
-          "minecraft:dirt",
-          "minecraft:coarse_dirt"
         ]
       }
     }
