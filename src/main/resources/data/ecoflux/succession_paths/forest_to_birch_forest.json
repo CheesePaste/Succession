@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "path_id": "ecoflux:forest_to_birch_forest",
+  "priority": 20,
+  "source_biomes": [
+    "minecraft:forest"
+  ],
+  "target_biome": "minecraft:birch_forest",
+  "fallback_biome": "minecraft:forest",
+  "climate": {
+    "temperature": {
+      "min": 0.45,
+      "max": 0.8
+    },
+    "downfall": {
+      "min": 0.55,
+      "max": 0.9
+    }
+  },
+  "chunk_rules": {
+    "consuming": 18,
+    "max_plant_count": 28,
+    "queue_fill_factor": 2.0,
+    "evaluation_interval_days": {
+      "min": 4,
+      "max": 6
+    }
+  },
+  "plants": [
+    {
+      "plant_id": "minecraft:fern",
+      "category": "ground_cover",
+      "weight": 7,
+      "point_value": 1,
+      "max_age_ticks": 60000,
+      "spawn_rules": {
+        "placement": "surface",
+        "require_sky": false,
+        "max_local_density": 7,
+        "allowed_base_blocks": [
+          "minecraft:grass_block",
+          "minecraft:dirt",
+          "minecraft:podzol"
+        ]
+      }
+    },
+    {
+      "plant_id": "minecraft:lilac",
+      "category": "flower",
+      "weight": 4,
+      "point_value": 3,
+      "max_age_ticks": 96000,
+      "spawn_rules": {
+        "placement": "surface",
+        "require_sky": true,
+        "max_local_density": 4,
+        "allowed_base_blocks": [
+          "minecraft:grass_block",
+          "minecraft:dirt"
+        ]
+      }
+    },
+    {
+      "plant_id": "minecraft:birch_sapling",
+      "category": "tree",
+      "weight": 5,
+      "point_value": 5,
+      "max_age_ticks": 168000,
+      "spawn_rules": {
+        "placement": "surface",
+        "require_sky": true,
+        "max_local_density": 4,
+        "allowed_base_blocks": [
+          "minecraft:grass_block",
+          "minecraft:dirt",
+          "minecraft:coarse_dirt"
+        ]
+      }
+    }
+  ]
+}
