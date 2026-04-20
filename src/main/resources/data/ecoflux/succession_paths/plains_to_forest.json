@@ -19,12 +19,12 @@
     }
   },
   "chunk_rules": {
-    "consuming": 4,
+    "consuming": 2,
     "max_plant_count": 1,
     "queue_fill_factor": 1.0,
     "processing_interval_ticks": 5,
     "evaluation_interval_ticks": 40,
-    "positive_progress_step": 1.0,
+    "positive_progress_step": 0.2,
     "negative_progress_step": 0.5,
     "evaluation_interval_days": {
       "min": 1,

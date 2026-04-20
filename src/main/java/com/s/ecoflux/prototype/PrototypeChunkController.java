@@ -9,6 +9,7 @@ import com.s.ecoflux.config.PlantSpawnRules;
 import com.s.ecoflux.config.SuccessionConfigRegistry;
 import com.s.ecoflux.config.SuccessionPathDefinition;
 import com.s.ecoflux.init.ModAttachments;
+import com.s.ecoflux.plant.VegetationTracker;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -91,16 +92,18 @@ public final class PrototypeChunkController {
     public static String describeChunk(LevelChunk chunk) {
         SuccessionChunkData chunkData = chunk.getData(ModAttachments.SUCCESSION_CHUNK_DATA);
         return String.format(
-                "chunk=%s currentBiome=%s activePath=%s targetBiome=%s progress=%.2f points=%d consuming=%d queue=%d activePlants=%d",
+                "chunk=%s currentBiome=%s activePath=%s targetBiome=%s progress=%.2f points=%d vegetationPoints=%d consuming=%d queue=%d activePlants=%d trackedVegetation=%d",
                 chunk.getPos(),
                 chunkData.getCurrentBiome().map(key -> key.location().toString()).orElse("unset"),
                 chunkData.getActivePathId().map(ResourceLocation::toString).orElse("none"),
                 chunkData.getTargetBiome().map(key -> key.location().toString()).orElse("none"),
                 chunkData.getProgress(),
                 chunkData.getTotalPlantPoints(),
+                chunkData.getTotalVegetationPoints(),
                 chunkData.getConsumingValue(),
                 chunkData.getPlantQueue().size(),
-                chunkData.getActivePlants().size());
+                chunkData.getActivePlants().size(),
+                chunkData.getVegetationRecords().size());
     }
 
     public static String pruneTrackedPlants(ServerLevel level, LevelChunk chunk) {
@@ -136,6 +139,7 @@ public final class PrototypeChunkController {
         List<String> messages = new ArrayList<>();
         messages.add(pruneTrackedPlants(level, chunk));
         messages.add(spawnOnce(level, chunk));
+        messages.add(VegetationTracker.INSTANCE.observeChunk(level, chunk));
         messages.add(evaluateNow(level, chunk));
         return String.join(" ", messages);
     }
@@ -156,6 +160,7 @@ public final class PrototypeChunkController {
         List<String> messages = new ArrayList<>();
         messages.add(pruneTrackedPlants(level, chunk));
         messages.add(spawnOnce(level, chunk));
+        messages.add(VegetationTracker.INSTANCE.observeChunk(level, chunk));
         messages.add(evaluatePrototypeProgress(level, chunk, chunkData, path, gameTime, false));
         return String.join(" ", messages);
     }
@@ -237,6 +242,12 @@ public final class PrototypeChunkController {
                 gameTime,
                 gameTime + nextEntry.get().maxAgeTicks(),
                 chunkData.getCurrentBiome().map(ResourceKey::location).orElse(null)));
+        VegetationTracker.INSTANCE.trackAt(
+                level,
+                chunk,
+                pos,
+                chunkData.getCurrentBiome().map(ResourceKey::location),
+                chunkData.getActivePathId());
 
         EcofluxConstants.LOGGER.info(
                 "Prototype planted {} in chunk {} at {}",
@@ -262,6 +273,7 @@ public final class PrototypeChunkController {
             }
 
             chunkData.removeTrackedPlant(record.position());
+            chunkData.removeVegetation(record.position());
         }
     }
 
@@ -277,8 +289,8 @@ public final class PrototypeChunkController {
             return "Evaluation skipped for " + chunk.getPos() + ": waiting for interval.";
         }
 
-        int totalPlantPoints = chunkData.getTotalPlantPoints();
-        double delta = totalPlantPoints >= chunkData.getConsumingValue()
+        int totalVegetationPoints = chunkData.getTotalVegetationPoints();
+        double delta = totalVegetationPoints >= chunkData.getConsumingValue()
                 ? path.chunkRules().positiveProgressStep()
                 : -path.chunkRules().negativeProgressStep();
         double nextProgress = Mth.clamp(chunkData.getProgress() + delta, -1.0D, 1.0D);
@@ -286,9 +298,9 @@ public final class PrototypeChunkController {
         chunkData.setProgress(nextProgress);
 
         EcofluxConstants.LOGGER.info(
-                "Prototype progress chunk={} points={} consuming={} progress={}",
+                "Prototype progress chunk={} vegetationPoints={} consuming={} progress={}",
                 chunk.getPos(),
-                totalPlantPoints,
+                totalVegetationPoints,
                 chunkData.getConsumingValue(),
                 String.format("%.2f", nextProgress));
 
@@ -297,9 +309,9 @@ public final class PrototypeChunkController {
         }
 
         return String.format(
-                "Evaluated %s: points=%d consuming=%d progress=%.2f.",
+                "Evaluated %s: vegetationPoints=%d consuming=%d progress=%.2f.",
                 chunk.getPos(),
-                totalPlantPoints,
+                totalVegetationPoints,
                 chunkData.getConsumingValue(),
                 nextProgress);
     }
@@ -328,6 +340,8 @@ public final class PrototypeChunkController {
         chunkData.setLastEvaluationGameTime(level.getGameTime());
         chunkData.replacePlantQueue(List.of());
         chunkData.clearTrackedPlants();
+        chunkData.clearVegetationRecords();
+        com.s.ecoflux.network.ModNetworking.syncChunkToTracking(level, chunk);
 
         EcofluxConstants.LOGGER.info(
                 "Prototype succession completed for chunk {}: {} -> {}",
