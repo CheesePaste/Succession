@@ -41,17 +41,17 @@ public final class VegetationTracker {
         BlockState state = level.getBlockState(pos);
         Optional<VegetationTypeAdapter> adapter = findAdapter(state);
         if (adapter.isEmpty()) {
-            return "No vegetation adapter matches " + pos + " (" + state.getBlock().getDescriptionId() + ").";
+            return "位置 " + pos + " 没有匹配的植被适配器（" + state.getBlock().getDescriptionId() + "）。";
         }
 
         ActiveVegetationRecord preview = adapter.get().captureBirth(level, pos, state, level.getGameTime(), Optional.empty(), Optional.empty());
         VegetationObservation observation = adapter.get().observe(level, preview, state, level.getGameTime());
-        return "Adapter=" + adapter.get().typeId()
-                + " category=" + adapter.get().category()
-                + " stage=" + observation.stage()
-                + " present=" + observation.present()
-                + " points=" + observation.currentPointValue()
-                + " detail=" + observation.detail();
+        return "适配器=" + adapter.get().typeId()
+                + " 分类=" + adapter.get().category()
+                + " 阶段=" + observation.stage()
+                + " 存在=" + observation.present()
+                + " 积分=" + observation.currentPointValue()
+                + " 详情=" + observation.detail();
     }
 
     public String trackAt(
@@ -63,7 +63,7 @@ public final class VegetationTracker {
         BlockState state = level.getBlockState(pos);
         Optional<VegetationTypeAdapter> adapter = findAdapter(state);
         if (adapter.isEmpty()) {
-            return "Track skipped for " + pos + ": no vegetation adapter matches " + state.getBlock().getDescriptionId() + ".";
+            return "位置 " + pos + " 跳过追踪：没有匹配 " + state.getBlock().getDescriptionId() + " 的植被适配器。";
         }
 
         ActiveVegetationRecord record = adapter.get().captureBirth(
@@ -75,7 +75,7 @@ public final class VegetationTracker {
                 sourcePathId);
         chunk.getData(com.s.ecoflux.init.ModAttachments.SUCCESSION_CHUNK_DATA).trackVegetation(record);
         ModNetworking.syncChunkToTracking(level, chunk);
-        return "Tracked vegetation at " + pos + " with adapter " + adapter.get().typeId() + ".";
+        return "已追踪位置 " + pos + " 的植被，适配器=" + adapter.get().typeId() + "。";
     }
 
     public String observeTracked(ServerLevel level, LevelChunk chunk, BlockPos pos) {
@@ -87,7 +87,7 @@ public final class VegetationTracker {
     public String observeChunk(ServerLevel level, LevelChunk chunk) {
         SuccessionChunkData chunkData = chunk.getData(com.s.ecoflux.init.ModAttachments.SUCCESSION_CHUNK_DATA);
         if (chunkData.getVegetationRecords().isEmpty()) {
-            return "Observe chunk skipped for " + chunk.getPos() + ": no tracked vegetation records.";
+            return "区块 " + chunk.getPos() + " 跳过观察：没有已追踪植被记录。";
         }
 
         List<BlockPos> snapshot = new ArrayList<>(chunkData.getVegetationRecords().keySet());
@@ -106,11 +106,11 @@ public final class VegetationTracker {
         }
 
         ModNetworking.syncChunkToTracking(level, chunk);
-        return "Observed chunk " + chunk.getPos()
-                + ": updated=" + updated
-                + " transformed=" + transformed
-                + " removed=" + removed
-                + " tracked=" + chunkData.getVegetationRecords().size() + ".";
+        return "已观察区块 " + chunk.getPos()
+                + "：更新=" + updated
+                + "，转化=" + transformed
+                + "，移除=" + removed
+                + "，剩余追踪=" + chunkData.getVegetationRecords().size() + "。";
     }
 
     public List<VegetationVisualSyncEntry> buildVisualSyncEntries(LevelChunk chunk, long gameTime) {
@@ -132,20 +132,20 @@ public final class VegetationTracker {
         SuccessionChunkData chunkData = chunk.getData(com.s.ecoflux.init.ModAttachments.SUCCESSION_CHUNK_DATA);
         ActiveVegetationRecord record = chunkData.getVegetationRecords().get(pos);
         if (record == null) {
-            return ObserveResult.noop("Observe skipped for " + pos + ": no tracked vegetation record.");
+            return ObserveResult.noop("位置 " + pos + " 跳过观察：没有已追踪植被记录。");
         }
 
         BlockState state = level.getBlockState(pos);
         Optional<VegetationTypeAdapter> adapter = findAdapter(record.adapterType());
         if (adapter.isEmpty()) {
-            return ObserveResult.noop("Observe failed for " + pos + ": adapter " + record.adapterType() + " is not registered.");
+            return ObserveResult.noop("位置 " + pos + " 观察失败：适配器 " + record.adapterType() + " 未注册。");
         }
 
         VegetationObservation observation = adapter.get().observe(level, record, state, level.getGameTime());
         if (!observation.present()) {
             chunkData.removeVegetation(pos);
             return new ObserveResult(
-                    "Observed " + pos + ": vegetation died/vanished. detail=" + observation.detail(),
+                    "已观察 " + pos + "：植被死亡或消失。详情=" + observation.detail(),
                     true,
                     false,
                     false);
@@ -163,7 +163,7 @@ public final class VegetationTracker {
                     level.getGameTime());
             chunkData.trackVegetation(transformedRecord);
             return new ObserveResult(
-                    "Observed " + pos + ": transformed to " + transformation.targetVegetationId() + ".",
+                    "已观察 " + pos + "：已转化为 " + transformation.targetVegetationId() + "。",
                     false,
                     true,
                     true);
@@ -174,9 +174,9 @@ public final class VegetationTracker {
                 observation.currentPointValue(),
                 level.getGameTime()));
         return new ObserveResult(
-                "Observed " + pos + ": stage=" + observation.stage()
-                        + " points=" + observation.currentPointValue()
-                        + " detail=" + observation.detail(),
+                "已观察 " + pos + "：阶段=" + observation.stage()
+                        + "，积分=" + observation.currentPointValue()
+                        + "，详情=" + observation.detail(),
                 false,
                 false,
                 true);
@@ -186,25 +186,25 @@ public final class VegetationTracker {
         SuccessionChunkData chunkData = chunk.getData(com.s.ecoflux.init.ModAttachments.SUCCESSION_CHUNK_DATA);
         ActiveVegetationRecord removed = chunkData.removeVegetation(pos);
         return removed == null
-                ? "Untrack skipped for " + pos + ": no tracked vegetation record."
-                : "Untracked vegetation at " + pos + ".";
+                ? "位置 " + pos + " 跳过取消追踪：没有已追踪植被记录。"
+                : "已取消追踪位置 " + pos + " 的植被。";
     }
 
     public String describeChunk(LevelChunk chunk) {
         SuccessionChunkData chunkData = chunk.getData(com.s.ecoflux.init.ModAttachments.SUCCESSION_CHUNK_DATA);
         if (chunkData.getVegetationRecords().isEmpty()) {
-            return "Chunk " + chunk.getPos() + " has no tracked vegetation records.";
+            return "区块 " + chunk.getPos() + " 没有已追踪植被记录。";
         }
 
         String joined = chunkData.getVegetationRecords().values().stream()
                 .limit(8)
                 .map(record -> record.position() + ":" + record.vegetationId() + ":" + record.lifeStage() + ":" + record.currentPointValue())
                 .reduce((left, right) -> left + ", " + right)
-                .orElse("none");
-        return "Chunk " + chunk.getPos()
-                + " trackedVegetation=" + chunkData.getVegetationRecords().size()
-                + " totalPoints=" + chunkData.getTotalVegetationPoints()
-                + " samples=[" + joined + "]";
+                .orElse("无");
+        return "区块 " + chunk.getPos()
+                + " 已追踪植被=" + chunkData.getVegetationRecords().size()
+                + " 总积分=" + chunkData.getTotalVegetationPoints()
+                + " 样本=[" + joined + "]";
     }
 
     private record ObserveResult(String message, boolean removed, boolean transformed, boolean updated) {

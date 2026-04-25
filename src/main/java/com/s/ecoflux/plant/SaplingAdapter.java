@@ -59,7 +59,7 @@ public final class SaplingAdapter implements VegetationTypeAdapter {
     @Override
     public VegetationObservation observe(ServerLevel level, ActiveVegetationRecord record, BlockState state, long gameTime) {
         if (state.isAir()) {
-            return VegetationObservation.absent("Sapling disappeared.");
+            return VegetationObservation.absent("树苗已消失。");
         }
 
         Optional<VegetationTransformation> transformation = detectTransformation(level, record, state, gameTime);
@@ -71,11 +71,11 @@ public final class SaplingAdapter implements VegetationTypeAdapter {
                     true,
                     false,
                     transformation,
-                    "Sapling transformed into tree structure.");
+                    "树苗已转化为树木结构。");
         }
 
         if (!matches(state)) {
-            return VegetationObservation.absent("Sapling block was replaced by an unsupported block.");
+            return VegetationObservation.absent("树苗方块已被不支持的方块替换。");
         }
 
         long age = Math.max(0L, gameTime - record.birthGameTime());
@@ -88,7 +88,7 @@ public final class SaplingAdapter implements VegetationTypeAdapter {
                 false,
                 false,
                 Optional.empty(),
-                "Observed sapling at age " + age + " ticks.");
+                "树苗年龄为 " + age + " tick。");
     }
 
     @Override

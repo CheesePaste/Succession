@@ -19,13 +19,13 @@
     }
   },
   "chunk_rules": {
-    "consuming": 2,
-    "max_plant_count": 1,
-    "queue_fill_factor": 1.0,
-    "processing_interval_ticks": 5,
-    "evaluation_interval_ticks": 40,
-    "positive_progress_step": 0.2,
-    "negative_progress_step": 0.5,
+    "consuming": 5,
+    "max_plant_count": 8,
+    "queue_fill_factor": 2.0,
+    "processing_interval_ticks": 100,
+    "evaluation_interval_ticks": 0,
+    "positive_progress_step": 0.25,
+    "negative_progress_step": 0.25,
     "evaluation_interval_days": {
       "min": 1,
       "max": 1
@@ -33,15 +33,95 @@
   },
   "plants": [
     {
-      "plant_id": "minecraft:dandelion",
-      "category": "flower",
-      "weight": 1,
-      "point_value": 4,
+      "plant_id": "minecraft:short_grass",
+      "category": "ground_cover",
+      "weight": 8,
+      "point_value": 1,
       "max_age_ticks": 72000,
       "spawn_rules": {
         "placement": "surface",
         "require_sky": true,
-        "max_local_density": 1,
+        "max_local_density": 4,
+        "allowed_base_blocks": [
+          "minecraft:grass_block",
+          "minecraft:dirt"
+        ]
+      }
+    },
+    {
+      "plant_id": "minecraft:fern",
+      "category": "ground_cover",
+      "weight": 4,
+      "point_value": 1,
+      "max_age_ticks": 72000,
+      "spawn_rules": {
+        "placement": "surface",
+        "require_sky": true,
+        "max_local_density": 3,
+        "allowed_base_blocks": [
+          "minecraft:grass_block",
+          "minecraft:dirt"
+        ]
+      }
+    },
+    {
+      "plant_id": "minecraft:poppy",
+      "category": "flower",
+      "weight": 2,
+      "point_value": 2,
+      "max_age_ticks": 72000,
+      "spawn_rules": {
+        "placement": "surface",
+        "require_sky": true,
+        "max_local_density": 2,
+        "allowed_base_blocks": [
+          "minecraft:grass_block",
+          "minecraft:dirt"
+        ]
+      }
+    },
+    {
+      "plant_id": "minecraft:dandelion",
+      "category": "flower",
+      "weight": 2,
+      "point_value": 2,
+      "max_age_ticks": 72000,
+      "spawn_rules": {
+        "placement": "surface",
+        "require_sky": true,
+        "max_local_density": 2,
+        "allowed_base_blocks": [
+          "minecraft:grass_block",
+          "minecraft:dirt"
+        ]
+      }
+    },
+    {
+      "plant_id": "minecraft:oak_sapling",
+      "category": "sapling",
+      "weight": 1,
+      "point_value": 2,
+      "max_age_ticks": 144000,
+      "spawn_rules": {
+        "placement": "surface",
+        "require_sky": true,
+        "max_local_density": 2,
+        "allowed_base_blocks": [
+          "minecraft:grass_block",
+          "minecraft:dirt"
+        ]
+      }
+    },
+    {
+      "plant_id": "minecraft:birch_sapling",
+      "category": "sapling",
+      "weight": 1,
+      "point_value": 2,
+      "max_age_ticks": 144000,
+      "spawn_rules": {
+        "placement": "surface",
+        "require_sky": true,
+        "max_local_density": 2,
         "allowed_base_blocks": [
           "minecraft:grass_block",
           "minecraft:dirt"

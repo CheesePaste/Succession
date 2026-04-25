@@ -29,6 +29,7 @@ public final class ModCommands {
         event.getDispatcher().register(Commands.literal("ecoflux")
                 .requires(source -> source.hasPermission(2))
                 .then(registerGlobalAutoCommands())
+                .then(Commands.literal("accelerate").executes(context -> runAccelerate(context.getSource())))
                 .then(registerLifecycleCommands())
                 .then(registerPrototypeCommands()));
     }
@@ -63,6 +64,7 @@ public final class ModCommands {
                 .then(Commands.literal("spawn").executes(context -> runPrototype(context.getSource(), PrototypeAction.SPAWN)))
                 .then(Commands.literal("evaluate").executes(context -> runPrototype(context.getSource(), PrototypeAction.EVALUATE)))
                 .then(Commands.literal("step").executes(context -> runPrototype(context.getSource(), PrototypeAction.STEP)))
+                .then(Commands.literal("accelerate").executes(context -> runPrototype(context.getSource(), PrototypeAction.ACCELERATE)))
                 .then(Commands.literal("transition").executes(context -> runPrototype(context.getSource(), PrototypeAction.TRANSITION)));
     }
 
@@ -88,13 +90,18 @@ public final class ModCommands {
             case INIT -> {
                 PrototypeChunkController.initializeChunkData(chunk);
                 ModChunkEvents.syncChunkTracking(level, chunk);
-                yield "Reinitialized current chunk. " + PrototypeChunkController.describeChunk(chunk);
+                yield "已重新初始化当前区块。 " + PrototypeChunkController.describeChunk(chunk);
             }
             case STATUS -> PrototypeChunkController.describeChunk(chunk);
             case PRUNE -> PrototypeChunkController.pruneTrackedPlants(level, chunk) + " " + PrototypeChunkController.describeChunk(chunk);
             case SPAWN -> PrototypeChunkController.spawnOnce(level, chunk) + " " + PrototypeChunkController.describeChunk(chunk);
             case EVALUATE -> PrototypeChunkController.evaluateNow(level, chunk) + " " + PrototypeChunkController.describeChunk(chunk);
             case STEP -> PrototypeChunkController.step(level, chunk) + " " + PrototypeChunkController.describeChunk(chunk);
+            case ACCELERATE -> {
+                String result = PrototypeChunkController.accelerate(level, chunk);
+                ModChunkEvents.syncChunkTracking(level, chunk);
+                yield result + " " + PrototypeChunkController.describeChunk(chunk);
+            }
             case TRANSITION -> {
                 String result = PrototypeChunkController.forceTransition(level, chunk);
                 ModChunkEvents.syncChunkTracking(level, chunk);
@@ -104,6 +111,11 @@ public final class ModCommands {
 
         source.sendSuccess(() -> Component.literal(message), false);
         return 1;
+    }
+
+    private static int runAccelerate(CommandSourceStack source)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        return runPrototype(source, PrototypeAction.ACCELERATE);
     }
 
     private static int runLifecycle(CommandSourceStack source, LifecycleAction action, BlockPos pos)
@@ -146,7 +158,7 @@ public final class ModCommands {
             case OBSERVE -> VegetationTracker.INSTANCE.observeChunk(level, chunk);
             case SYNC -> {
                 ModNetworking.syncChunkToTracking(level, chunk);
-                yield "Synced lifecycle visuals for chunk " + chunk.getPos() + ".";
+                yield "已同步区块 " + chunk.getPos() + " 的生命周期视觉状态。";
             }
         };
         source.sendSuccess(() -> Component.literal(message), false);
@@ -156,7 +168,7 @@ public final class ModCommands {
     private static int setAuto(CommandSourceStack source, boolean enabled) {
         ModChunkEvents.setAutomaticProcessingEnabled(enabled);
         source.sendSuccess(
-                () -> Component.literal("Ecoflux prototype auto processing " + (enabled ? "enabled" : "disabled") + "."),
+                () -> Component.literal("Ecoflux 原型自动演替已" + (enabled ? "开启" : "关闭") + "。"),
                 true);
         return 1;
     }
@@ -164,8 +176,8 @@ public final class ModCommands {
     private static int autoStatus(CommandSourceStack source) {
         source.sendSuccess(
                 () -> Component.literal(
-                        "Ecoflux prototype auto processing is "
-                                + (ModChunkEvents.isAutomaticProcessingEnabled() ? "enabled" : "disabled") + "."),
+                        "Ecoflux 原型自动演替当前"
+                                + (ModChunkEvents.isAutomaticProcessingEnabled() ? "已开启" : "已关闭") + "。"),
                 false);
         return 1;
     }
@@ -188,9 +200,9 @@ public final class ModCommands {
                 PrototypeChunkController.pruneTrackedPlants(level, chunk),
                 PrototypeChunkController.spawnOnce(level, chunk),
                 VegetationTracker.INSTANCE.observeChunk(level, chunk),
-                "Initial evaluate skipped to preserve visible growth.");
+                "已跳过首次评估，以保留可见生长过程。");
         source.sendSuccess(
-                () -> Component.literal("Ecoflux full auto enabled. " + bootstrap + " " + PrototypeChunkController.describeChunk(chunk)),
+                () -> Component.literal("Ecoflux 完整自动演替已开启。 " + bootstrap + " " + PrototypeChunkController.describeChunk(chunk)),
                 true);
         return 1;
     }
@@ -202,6 +214,7 @@ public final class ModCommands {
         SPAWN,
         EVALUATE,
         STEP,
+        ACCELERATE,
         TRANSITION
     }
 

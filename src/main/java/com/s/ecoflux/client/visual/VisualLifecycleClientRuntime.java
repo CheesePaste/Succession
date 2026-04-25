@@ -32,16 +32,16 @@ public final class VisualLifecycleClientRuntime {
     public String start(BlockPos pos) {
         ClientLevel level = currentLevel();
         if (level == null) {
-            return "Visual lifecycle start failed: no client level is loaded.";
+            return "视觉生命周期启动失败：客户端世界尚未加载。";
         }
 
         BlockState state = level.getBlockState(pos);
         if (state.isAir()) {
-            return "Visual lifecycle start skipped: " + pos + " is air.";
+            return "视觉生命周期跳过启动：" + pos + " 是空气。";
         }
         Optional<VisualLifecycleAdapter> adapter = VisualLifecycleRegistry.INSTANCE.find(state);
         if (adapter.isEmpty()) {
-            return "Visual lifecycle start skipped: no adapter could be resolved at " + pos + ".";
+            return "视觉生命周期跳过启动：" + pos + " 没有可用适配器。";
         }
 
         VisualLifecycleInstance instance = new VisualLifecycleInstance(
@@ -56,79 +56,79 @@ public final class VisualLifecycleClientRuntime {
         trackedInstances.put(key(level, pos), instance);
         trackedInstancesByPos.put(pos.asLong(), instance);
         markDirty(pos);
-        return "Visual lifecycle started at " + pos + " for " + instance.blockId() + ".";
+        return "已在 " + pos + " 为 " + instance.blockId() + " 启动视觉生命周期。";
     }
 
     public String stop(BlockPos pos) {
         ClientLevel level = currentLevel();
         if (level == null) {
-            return "Visual lifecycle stop failed: no client level is loaded.";
+            return "视觉生命周期停止失败：客户端世界尚未加载。";
         }
 
         VisualLifecycleInstance removed = trackedInstances.remove(key(level, pos));
         trackedInstancesByPos.remove(pos.asLong());
         markDirty(pos);
         return removed == null
-                ? "Visual lifecycle stop skipped: nothing tracked at " + pos + "."
-                : "Visual lifecycle stopped at " + pos + ".";
+                ? "视觉生命周期跳过停止：" + pos + " 没有追踪对象。"
+                : "已停止 " + pos + " 的视觉生命周期。";
     }
 
     public String forceStage(BlockPos pos, VisualLifecycleStage stage) {
         ClientLevel level = currentLevel();
         if (level == null) {
-            return "Visual lifecycle force-stage failed: no client level is loaded.";
+            return "视觉生命周期强制阶段失败：客户端世界尚未加载。";
         }
 
         String key = key(level, pos);
         VisualLifecycleInstance instance = trackedInstances.get(key);
         if (instance == null) {
-            return "Visual lifecycle force-stage skipped: nothing tracked at " + pos + ".";
+            return "视觉生命周期跳过强制阶段：" + pos + " 没有追踪对象。";
         }
 
         VisualLifecycleInstance updated = instance.withForcedStage(stage);
         trackedInstances.put(key, updated);
         trackedInstancesByPos.put(pos.asLong(), updated);
         markDirty(pos);
-        return "Visual lifecycle at " + pos + " forced to stage " + stage + ".";
+        return "已将 " + pos + " 的视觉生命周期强制为阶段 " + stage + "。";
     }
 
     public String inspect(BlockPos pos) {
         ClientLevel level = currentLevel();
         if (level == null) {
-            return "Visual lifecycle inspect failed: no client level is loaded.";
+            return "视觉生命周期检查失败：客户端世界尚未加载。";
         }
 
         BlockState state = level.getBlockState(pos);
         Optional<VisualLifecycleAdapter> adapter = VisualLifecycleRegistry.INSTANCE.find(state);
         VisualLifecycleInstance instance = trackedInstances.get(key(level, pos));
-        String adapterText = adapter.map(found -> found.typeId().toString()).orElse("none");
+        String adapterText = adapter.map(found -> found.typeId().toString()).orElse("无");
         if (instance == null) {
-            return "Visual lifecycle inspect " + pos + ": block="
+            return "视觉生命周期检查 " + pos + "：方块="
                     + BuiltInRegistries.BLOCK.getKey(state.getBlock())
-                    + " adapter=" + adapterText
-                    + " tracked=false";
+                    + " 适配器=" + adapterText
+                    + " 已追踪=false";
         }
 
         int baseColor = defaultColor(level, pos, state);
         VisualLifecycleAdapter resolvedAdapter = adapter.orElse(GrassVisualLifecycleAdapter.INSTANCE);
         VisualLifecycleRenderState renderState = resolvedAdapter.resolveState(instance, level.getGameTime(), baseColor);
-        return "Visual lifecycle inspect " + pos
-                + ": block=" + instance.blockId()
-                + " adapter=" + instance.adapterId()
-                + " source=" + instance.source()
-                + " stage=" + renderState.stage()
-                + " progress=" + String.format("%.2f", renderState.stageProgress())
-                + " scale=" + String.format("%.2f", renderState.scale())
-                + " tint=0x" + Integer.toHexString(renderState.tintedColor());
+        return "视觉生命周期检查 " + pos
+                + "：方块=" + instance.blockId()
+                + " 适配器=" + instance.adapterId()
+                + " 来源=" + instance.source()
+                + " 阶段=" + renderState.stage()
+                + " 进度=" + String.format("%.2f", renderState.stageProgress())
+                + " 缩放=" + String.format("%.2f", renderState.scale())
+                + " 色调=0x" + Integer.toHexString(renderState.tintedColor());
     }
 
     public String list() {
         ClientLevel level = currentLevel();
         if (level == null) {
-            return "Visual lifecycle list failed: no client level is loaded.";
+            return "视觉生命周期列表失败：客户端世界尚未加载。";
         }
         if (trackedInstances.isEmpty()) {
-            return "Visual lifecycle list: no tracked plants.";
+            return "视觉生命周期列表：没有已追踪植物。";
         }
 
         String dimensionPrefix = level.dimension().location() + "|";
@@ -139,15 +139,15 @@ public final class VisualLifecycleClientRuntime {
                 .limit(8)
                 .map(instance -> instance.pos() + ":" + instance.blockId() + ":" + instance.source())
                 .reduce((left, right) -> left + ", " + right)
-                .orElse("none");
-        return "Visual lifecycle tracked=" + trackedInstances.size() + " [" + joined + "]";
+                .orElse("无");
+        return "视觉生命周期已追踪=" + trackedInstances.size() + " [" + joined + "]";
     }
 
     public String clear() {
         trackedInstances.clear();
         trackedInstancesByPos.clear();
         refreshAll();
-        return "Visual lifecycle cleared.";
+        return "视觉生命周期追踪已清空。";
     }
 
     public List<VisualLifecycleInstance> trackedInCurrentLevel() {

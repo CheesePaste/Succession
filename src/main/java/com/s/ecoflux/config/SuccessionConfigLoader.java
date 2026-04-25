@@ -39,7 +39,7 @@ public final class SuccessionConfigLoader extends SimpleJsonResourceReloadListen
                 .forEach(entry -> parseFile(entry, parsedPaths, fileIdByPathId));
 
         SuccessionConfigRegistry.replace(parsedPaths);
-        EcofluxConstants.LOGGER.info("Loaded {} Ecoflux succession path definitions", parsedPaths.size());
+        EcofluxConstants.LOGGER.info("已加载 {} 条 Ecoflux 演替路径定义", parsedPaths.size());
         logSourceBiomeSummary(parsedPaths);
     }
 
@@ -54,19 +54,19 @@ public final class SuccessionConfigLoader extends SimpleJsonResourceReloadListen
 
             ResourceLocation existingFile = fileIdByPathId.putIfAbsent(definition.pathId(), fileId);
             if (existingFile != null) {
-                throw new JsonParseException("Duplicate path_id " + definition.pathId() + " also declared in " + existingFile);
+                throw new JsonParseException("重复的 path_id " + definition.pathId() + "，也声明于 " + existingFile);
             }
 
             parsedPaths.add(definition);
         } catch (RuntimeException exception) {
-            EcofluxConstants.LOGGER.error("Failed to parse Ecoflux succession path {}", fileId, exception);
+            EcofluxConstants.LOGGER.error("解析 Ecoflux 演替路径 {} 失败", fileId, exception);
         }
     }
 
     private SuccessionPathDefinition parseDefinition(ResourceLocation fileId, JsonObject root) {
         int schemaVersion = GsonHelper.getAsInt(root, "schema_version");
         if (schemaVersion != 1) {
-            throw new JsonParseException("Unsupported schema_version " + schemaVersion + " in " + fileId);
+            throw new JsonParseException(fileId + " 中存在不支持的 schema_version " + schemaVersion);
         }
 
         return new SuccessionPathDefinition(
@@ -139,7 +139,7 @@ public final class SuccessionConfigLoader extends SimpleJsonResourceReloadListen
             values.add(parseId(element, fieldName));
         }
         if (values.isEmpty()) {
-            throw new JsonParseException(fieldName + " cannot be empty");
+            throw new JsonParseException(fieldName + " 不能为空");
         }
         return values;
     }
@@ -156,7 +156,7 @@ public final class SuccessionConfigLoader extends SimpleJsonResourceReloadListen
         try {
             return ResourceLocation.parse(value);
         } catch (IllegalArgumentException exception) {
-            throw new JsonParseException("Invalid resource location for " + fieldName + ": " + value, exception);
+            throw new JsonParseException(fieldName + " 的资源位置无效：" + value, exception);
         }
     }
 
@@ -178,7 +178,7 @@ public final class SuccessionConfigLoader extends SimpleJsonResourceReloadListen
                 .collect(Collectors.joining(", "));
 
         EcofluxConstants.LOGGER.info(
-                "Ecoflux succession source summary: {}",
-                summary.isBlank() ? "no source biomes loaded" : summary);
+                "Ecoflux 演替来源群系统计：{}",
+                summary.isBlank() ? "未加载来源群系" : summary);
     }
 }

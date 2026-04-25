@@ -20,6 +20,6 @@ public final class EcofluxMod {
         ModCommands.register();
         ModReloadListeners.register();
         modContainer.registerConfig(ModConfig.Type.CLIENT, VisualLifecycleClientConfig.SPEC, "ecoflux-client.toml");
-        EcofluxConstants.LOGGER.info("{} is initializing", modContainer.getModInfo().getDisplayName());
+        EcofluxConstants.LOGGER.info("{} 正在初始化", modContainer.getModInfo().getDisplayName());
     }
 }

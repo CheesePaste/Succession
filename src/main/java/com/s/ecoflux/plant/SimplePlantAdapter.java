@@ -68,7 +68,7 @@ public final class SimplePlantAdapter implements VegetationTypeAdapter {
     @Override
     public VegetationObservation observe(ServerLevel level, ActiveVegetationRecord record, BlockState state, long gameTime) {
         if (state.isAir() || !matches(state)) {
-            return VegetationObservation.absent("Simple plant is no longer present.");
+            return VegetationObservation.absent("简单植物已不存在。");
         }
 
         long age = Math.max(0L, gameTime - record.birthGameTime());
@@ -99,7 +99,7 @@ public final class SimplePlantAdapter implements VegetationTypeAdapter {
                 mature,
                 aging,
                 Optional.empty(),
-                "Observed simple plant at age " + age + " ticks.");
+                "简单植物年龄为 " + age + " tick。");
     }
 
     @Override

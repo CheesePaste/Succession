@@ -39,15 +39,15 @@ public final class ModClientVisualLifecycle {
                                 .then(Commands.literal("clear").executes(context -> {
                                     VisualLifecycleClientConfig.clearDebugUniformScaleOverride();
                                     VisualLifecycleClientRuntime.INSTANCE.refreshAll();
-                                    return send(context.getSource(), "Visual lifecycle uniform scale override cleared.");
+                                    return send(context.getSource(), "视觉生命周期统一缩放覆盖已清除。");
                                 })))
                         .then(Commands.literal("list").executes(context -> send(context.getSource(), VisualLifecycleClientRuntime.INSTANCE.list())))
                         .then(Commands.literal("clear").executes(context -> send(context.getSource(), VisualLifecycleClientRuntime.INSTANCE.clear())))
                         .then(Commands.literal("help").executes(context -> send(
                                 context.getSource(),
-                                "Visual lifecycle can track any non-air block. Tuned presets: "
+                                "视觉生命周期可追踪任意非空气方块。已调校预设："
                                         + VisualLifecycleRegistry.INSTANCE.supportSummary()
-                                        + ". Use /ecoflux visual scale_override 100 for a giant test. Stage scales live in config/ecoflux-client.toml.")))));
+                                        + "。可用 /ecoflux visual scale_override 100 做巨型测试；阶段缩放位于 config/ecoflux-client.toml。")))));
     }
 
     @SubscribeEvent
@@ -91,7 +91,7 @@ public final class ModClientVisualLifecycle {
                                                 case "growing" -> VisualLifecycleStage.GROWING;
                                                 case "mature" -> VisualLifecycleStage.MATURE;
                                                 case "aging" -> VisualLifecycleStage.AGING;
-                                                default -> throw new IllegalArgumentException("stage must be born/growing/mature/aging");
+                                                default -> throw new IllegalArgumentException("阶段必须是 born/growing/mature/aging");
                                             };
                                             return send(
                                                     context.getSource(),
@@ -110,7 +110,7 @@ public final class ModClientVisualLifecycle {
                     float scale = FloatArgumentType.getFloat(context, "value");
                     VisualLifecycleClientConfig.setDebugUniformScaleOverride(scale);
                     VisualLifecycleClientRuntime.INSTANCE.refreshAll();
-                    return send(context.getSource(), "Visual lifecycle uniform scale override set to " + scale + ".");
+                    return send(context.getSource(), "视觉生命周期统一缩放覆盖已设为 " + scale + "。");
                 });
     }
 

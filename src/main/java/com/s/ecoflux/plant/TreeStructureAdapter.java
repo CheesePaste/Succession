@@ -58,7 +58,7 @@ public final class TreeStructureAdapter implements VegetationTypeAdapter {
     @Override
     public VegetationObservation observe(ServerLevel level, ActiveVegetationRecord record, BlockState state, long gameTime) {
         if (state.isAir() || !matches(state)) {
-            return VegetationObservation.absent("Tree structure is no longer present.");
+            return VegetationObservation.absent("树木结构已不存在。");
         }
 
         long age = Math.max(0L, gameTime - record.birthGameTime());
@@ -71,7 +71,7 @@ public final class TreeStructureAdapter implements VegetationTypeAdapter {
                 stage == VegetationLifecycleStage.MATURE,
                 stage == VegetationLifecycleStage.AGING,
                 Optional.empty(),
-                "Observed tree structure at age " + age + " ticks.");
+                "树木结构年龄为 " + age + " tick。");
     }
 
     @Override

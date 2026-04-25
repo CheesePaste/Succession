@@ -63,7 +63,7 @@ public final class ModNetworking {
 
     private static void handleClientSync(VegetationVisualChunkSyncPayload payload) {
         if (!FMLEnvironment.dist.isClient()) {
-            EcofluxConstants.LOGGER.debug("Ignoring client visual sync payload on dedicated server for chunk {}", payload.chunkPos());
+            EcofluxConstants.LOGGER.debug("已在专用服务器忽略区块 {} 的客户端视觉同步载荷", payload.chunkPos());
             return;
         }
         ClientHooks.handle(payload);

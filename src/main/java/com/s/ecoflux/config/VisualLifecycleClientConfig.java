@@ -17,19 +17,19 @@ public final class VisualLifecycleClientConfig {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
         builder.push("visual_lifecycle");
         USE_CONFIGURED_STAGE_SCALES = builder
-                .comment("When true, tracked blocks use the configured stage scales below instead of adapter defaults.")
-                .define("use_configured_stage_scales", true);
+                .comment("为 true 时使用下方统一缩放；默认 false 时使用每种植物自己的缩放，避免小草被异常放大。")
+                .define("use_configured_stage_scales", false);
         BORN_SCALE = builder
-                .comment("Scale used at the born stage.")
+                .comment("出生阶段缩放。")
                 .defineInRange("born_scale", 0.2D, 0.05D, 100.0D);
         GROWING_START_SCALE = builder
-                .comment("Scale at the start of the growing stage.")
+                .comment("生长阶段起始缩放。")
                 .defineInRange("growing_start_scale", 0.65D, 0.05D, 100.0D);
         MATURE_SCALE = builder
-                .comment("Scale used at the mature stage.")
-                .defineInRange("mature_scale", 3.0D, 0.05D, 100.0D);
+                .comment("成熟阶段缩放。")
+                .defineInRange("mature_scale", 1.0D, 0.05D, 100.0D);
         AGING_SCALE = builder
-                .comment("Scale used at the aging stage.")
+                .comment("衰老阶段缩放。")
                 .defineInRange("aging_scale", 0.9D, 0.05D, 100.0D);
         builder.pop();
         SPEC = builder.build();

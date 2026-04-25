@@ -1,4 +1,4 @@
 {
   "mod.ecoflux.name": "Ecoflux",
-  "debug.ecoflux.chunk_attachment": "Ecoflux chunk attachment: %s"
+  "debug.ecoflux.chunk_attachment": "Ecoflux 区块附件：%s"
 }
