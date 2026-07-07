@@ -176,20 +176,24 @@ public final class ModCommands {
             throws com.mojang.brigadier.exceptions.CommandSyntaxException {
         ServerPlayer player = source.getPlayerOrException();
         ServerLevel level = player.serverLevel();
-        LevelChunk chunk = level.getChunkAt(player.blockPosition());
 
+        ModChunkEvents.setGlobalAutoEnabled(true);
+
+        // Bootstrap all already-loaded chunks, not just the player's current chunk
+        String allChunksResult = ModChunkEvents.bootstrapAllLoadedChunks(level);
+
+        // Also handle the player's current chunk for immediate feedback
+        LevelChunk chunk = level.getChunkAt(player.blockPosition());
         SuccessionChunkData chunkData = chunk.getData(ModAttachments.SUCCESSION_CHUNK_DATA);
         if (chunkData.getCurrentBiome().isEmpty()) {
             SuccessionService.initializeChunk(chunk);
         }
-
-        ModChunkEvents.setGlobalAutoEnabled(true);
         String bootstrap = String.join(" ",
                 SuccessionService.pruneChunk(level, chunk),
                 SuccessionService.spawnInChunk(level, chunk),
                 VegetationTracker.INSTANCE.observeChunk(level, chunk));
         source.sendSuccess(
-                () -> Component.literal("Ecoflux 全局自动演替已开启。 " + bootstrap + " " + SuccessionService.describeChunk(chunk)),
+                () -> Component.literal("Ecoflux 全局自动演替已开启。 " + allChunksResult + " " + bootstrap + " " + SuccessionService.describeChunk(chunk)),
                 true);
         return 1;
     }

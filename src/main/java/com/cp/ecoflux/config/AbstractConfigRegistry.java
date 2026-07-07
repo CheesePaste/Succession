@@ -19,6 +19,7 @@ public abstract class AbstractConfigRegistry<K, T> {
     }
 
     public Optional<T> get(K key) {
+        if (key == null) return Optional.empty();
         return Optional.ofNullable(store.get(key));
     }
 

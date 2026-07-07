@@ -5,6 +5,7 @@ import com.cp.ecoflux.api.data.ActiveVegetationRecord;
 import com.cp.ecoflux.attachment.SuccessionChunkData;
 import com.cp.ecoflux.config.EcofluxServerConfig;
 import com.cp.ecoflux.config.SuccessionSpeedConfig;
+import com.cp.ecoflux.plant.PlantSpawner;
 import com.cp.ecoflux.plant.adapters.TreeStructureAdapter;
 import com.cp.ecoflux.worldgen.WorldGenVegetationScanner;
 import com.cp.ecoflux.worldgen.feature.EcofluxTreeFeature;
@@ -54,6 +55,51 @@ public final class ModChunkEvents {
 
     public static void setGlobalAutoEnabled(boolean enabled) {
         globalAutoEnabled = enabled;
+    }
+
+    /**
+     * Process all currently loaded chunks for the given level: initialize any
+     * that are uninitialized, prune invalid plants, and trigger immediate spawning.
+     * Called when global auto is first enabled.
+     */
+    public static String bootstrapAllLoadedChunks(ServerLevel level) {
+        LinkedHashSet<Long> chunks = ALL_LOADED_CHUNKS.get(level.dimension());
+        if (chunks == null || chunks.isEmpty()) {
+            return "没有已加载的区块。";
+        }
+
+        int total = 0;
+        int initialized = 0;
+        int spawned = 0;
+        for (long chunkPosLong : new ArrayList<>(chunks)) {
+            LevelChunk chunk = level.getChunkSource().getChunkNow(
+                    net.minecraft.world.level.ChunkPos.getX(chunkPosLong),
+                    net.minecraft.world.level.ChunkPos.getZ(chunkPosLong));
+            if (chunk == null) continue;
+
+            total++;
+            SuccessionChunkData chunkData = chunk.getData(ModAttachments.SUCCESSION_CHUNK_DATA);
+
+            // Initialize if not yet done
+            if (chunkData.getCurrentBiome().isEmpty()) {
+                SuccessionService.initializeChunk(chunk);
+                initialized++;
+            }
+
+            // Only process chunks that have an active path
+            if (!SuccessionService.hasActivePath(chunkData)) continue;
+
+            try {
+                PlantSpawner.pruneInvalidPlants(level, chunkData, level.getGameTime());
+                SuccessionService.spawnInChunk(level, chunk);
+                spawned++;
+            } catch (Exception e) {
+                EcofluxConstants.LOGGER.error("[Ecoflux] Failed to bootstrap chunk {}: {}",
+                        net.minecraft.world.level.ChunkPos.getX(chunkPosLong) + "," + net.minecraft.world.level.ChunkPos.getZ(chunkPosLong), e.getMessage());
+            }
+        }
+
+        return String.format("处理了 %d 个已加载区块（初始化 %d，生成植物 %d）", total, initialized, spawned);
     }
 
     // ── Per-chunk auto ───────────────────────────────────────────────────

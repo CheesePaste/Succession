@@ -24,6 +24,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.QuartPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
@@ -112,6 +113,10 @@ public final class ChunkSamplingHelper {
             return false;
         }
         if (!isAllowedBaseBlock(level.getBlockState(placePos.below()), spawnRules)) {
+            return false;
+        }
+        // Don't plant on tree trunks to prevent floating-tree visual glitch
+        if (level.getBlockState(placePos.below()).is(BlockTags.LOGS)) {
             return false;
         }
         if (countNearbyTrackedPlants(chunkData, placePos, 4) >= spawnRules.maxLocalDensity()) {

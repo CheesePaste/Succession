@@ -13,6 +13,7 @@ import java.util.Optional;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.resources.ResourceKey;
+import org.jetbrains.annotations.Nullable;
 
 public final class SuccessionConfigRegistry extends AbstractConfigRegistry<ResourceLocation, SuccessionPathDefinition> {
     private static final Comparator<SuccessionPathDefinition> PATH_ORDER = Comparator
@@ -55,7 +56,8 @@ public final class SuccessionConfigRegistry extends AbstractConfigRegistry<Resou
         return INSTANCE.get(pathId);
     }
 
-    public static List<SuccessionPathDefinition> findMatches(ResourceLocation biomeId, double temperature, double downfall) {
+    public static List<SuccessionPathDefinition> findMatches(@Nullable ResourceLocation biomeId, double temperature, double downfall) {
+        if (biomeId == null) return List.of();
         return pathsBySourceBiome.getOrDefault(biomeId, List.of()).stream()
                 .filter(path -> path.matches(biomeId, temperature, downfall))
                 .toList();
