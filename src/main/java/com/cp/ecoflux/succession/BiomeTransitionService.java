@@ -42,8 +42,8 @@ public final class BiomeTransitionService {
             LevelChunk chunk,
             SuccessionChunkData chunkData,
             SuccessionPathDefinition path) {
-        ResourceKey<Biome> fallbackKey = chunkData.getPreviousBiome().orElse(null);
-        if (path.fallbackBiome() != null) {
+        ResourceKey<Biome> fallbackKey = chunkData.popBiome().orElse(null);
+        if (fallbackKey == null && path.fallbackBiome() != null) {
             ResourceLocation fallbackId = path.fallbackBiome();
             fallbackKey = ResourceKey.create(Registries.BIOME, fallbackId);
         }
@@ -74,7 +74,7 @@ public final class BiomeTransitionService {
                         level.dimension());
 
         ResourceKey<Biome> oldBiome = chunkData.getCurrentBiome().orElse(null);
-        chunkData.setPreviousBiome(oldBiome);
+        // Popping was already done above for regression, so we don't push it. We just transition.
         chunkData.setCurrentBiome(fallbackKey);
         chunkData.softReset();
         chunkData.setLastEvaluationGameTime(level.getGameTime());
@@ -121,7 +121,7 @@ public final class BiomeTransitionService {
                         ClientboundChunksBiomesPacket.forChunks(List.of(chunk)),
                         level.dimension());
         ResourceKey<Biome> oldBiome = data.getCurrentBiome().orElse(null);
-        data.setPreviousBiome(oldBiome);
+        data.pushBiome(oldBiome);
         data.setCurrentBiome(targetBiome.get());
         data.softReset();
         data.setLastEvaluationGameTime(level.getGameTime());

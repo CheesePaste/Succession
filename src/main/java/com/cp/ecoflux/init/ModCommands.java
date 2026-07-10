@@ -31,6 +31,7 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
@@ -74,7 +75,8 @@ public final class ModCommands {
                 .then(registerSpeedCommand())
                 .then(registerLifecycleCommands())
                 .then(registerTreeCommands())
-                .then(registerSampleCommands()));
+                .then(registerSampleCommands())
+                .then(registerStackCommands()));
     }
 
     private static com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> registerAutoCommands() {
@@ -91,6 +93,44 @@ public final class ModCommands {
                                 context.getSource(),
                                 FloatArgumentType.getFloat(context, "multiplier"))))
                 .then(Commands.literal("status").executes(context -> speedStatus(context.getSource())));
+    }
+
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> registerStackCommands() {
+        return Commands.literal("stack")
+                .then(Commands.literal("view").executes(context -> stackView(context.getSource())))
+                .then(Commands.literal("pop").executes(context -> stackPop(context.getSource())));
+    }
+
+    private static int stackView(CommandSourceStack source) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer player = source.getPlayerOrException();
+        LevelChunk chunk = player.serverLevel().getChunkAt(player.blockPosition());
+        SuccessionChunkData chunkData = chunk.getData(ModAttachments.SUCCESSION_CHUNK_DATA);
+        List<ResourceKey<Biome>> stack = chunkData.getBiomeStack();
+        
+        if (stack.isEmpty()) {
+            source.sendSuccess(() -> Component.literal("当前区块的演替栈为空。"), false);
+        } else {
+            StringBuilder sb = new StringBuilder("当前区块演替栈 (顶 -> 底):\n");
+            for (int i = 0; i < stack.size(); i++) {
+                sb.append(i).append(": ").append(stack.get(i).location()).append("\n");
+            }
+            source.sendSuccess(() -> Component.literal(sb.toString()), false);
+        }
+        return 1;
+    }
+
+    private static int stackPop(CommandSourceStack source) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer player = source.getPlayerOrException();
+        LevelChunk chunk = player.serverLevel().getChunkAt(player.blockPosition());
+        SuccessionChunkData chunkData = chunk.getData(ModAttachments.SUCCESSION_CHUNK_DATA);
+        
+        Optional<ResourceKey<Biome>> popped = chunkData.popBiome();
+        if (popped.isPresent()) {
+            source.sendSuccess(() -> Component.literal("已弹出栈顶群系: " + popped.get().location()), false);
+        } else {
+            source.sendSuccess(() -> Component.literal("弹出失败：当前区块的演替栈已为空。"), false);
+        }
+        return 1;
     }
 
     private static com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> registerLifecycleCommands() {

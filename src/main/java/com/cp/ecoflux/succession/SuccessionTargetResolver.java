@@ -43,7 +43,6 @@ public final class SuccessionTargetResolver {
             SuccessionPathDefinition path = matchedPath.get();
             BiomeRules rules = biomeRules.get();
             chunkData.setActivePathId(path.pathId());
-            chunkData.setPreviousBiome(ChunkSamplingHelper.toBiomeKey(path.fallbackBiome()));
             chunkData.setTargetBiome(ChunkSamplingHelper.toBiomeKey(path.targetBiome()));
             chunkData.setConsumingValue(rules.consuming());
             chunkData.setMaxPlantCount(rules.samplePlantCount(new java.util.Random(chunk.getPos().toLong())));
@@ -64,6 +63,6 @@ public final class SuccessionTargetResolver {
                     "区块 {} 的群系 {} 没有群系规则配置", chunk.getPos(), biomeId);
         }
 
-        chunkData.setPreviousBiome(null);
+        // History is preserved.
     }
 }

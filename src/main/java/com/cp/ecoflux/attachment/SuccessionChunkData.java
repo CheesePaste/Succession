@@ -21,6 +21,7 @@ import java.util.ArrayDeque;
 import java.util.Collection;
 import java.util.Deque;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -60,7 +61,7 @@ public final class SuccessionChunkData implements INBTSerializable<CompoundTag> 
     private final ChunkAccess owner;
     private @Nullable ResourceKey<Biome> currentBiome;
     private @Nullable ResourceKey<Biome> targetBiome;
-    private @Nullable ResourceKey<Biome> previousBiome;
+    private final Deque<ResourceKey<Biome>> biomeStack = new ArrayDeque<>();
     private @Nullable ResourceLocation activePathId;
     private @Nullable ResourceLocation activeBiomeRulesId;
     private double progress;
@@ -95,13 +96,28 @@ public final class SuccessionChunkData implements INBTSerializable<CompoundTag> 
         markDirty();
     }
 
-    public Optional<ResourceKey<Biome>> getPreviousBiome() {
-        return Optional.ofNullable(previousBiome);
+    public void pushBiome(ResourceKey<Biome> biomeKey) {
+        if (biomeKey != null) {
+            biomeStack.push(biomeKey);
+            markDirty();
+        }
     }
 
-    public void setPreviousBiome(@Nullable ResourceKey<Biome> previousBiome) {
-        this.previousBiome = previousBiome;
+    public Optional<ResourceKey<Biome>> popBiome() {
+        if (biomeStack.isEmpty()) {
+            return Optional.empty();
+        }
+        ResourceKey<Biome> popped = biomeStack.pop();
         markDirty();
+        return Optional.of(popped);
+    }
+
+    public Optional<ResourceKey<Biome>> peekBiome() {
+        return Optional.ofNullable(biomeStack.peek());
+    }
+
+    public List<ResourceKey<Biome>> getBiomeStack() {
+        return List.copyOf(biomeStack);
     }
 
     public double getProgress() {
@@ -311,7 +327,16 @@ public final class SuccessionChunkData implements INBTSerializable<CompoundTag> 
         CompoundTag tag = new CompoundTag();
         writeBiomeKey(tag, CURRENT_BIOME, currentBiome);
         writeBiomeKey(tag, TARGET_BIOME, targetBiome);
-        writeBiomeKey(tag, PREVIOUS_BIOME, previousBiome);
+        
+        ListTag stackTag = new ListTag();
+        for (ResourceKey<Biome> biomeKey : biomeStack) {
+            // Because it's a stack (Deque), iterating normally goes top to bottom.
+            // We want to write it out in order, but ListTag doesn't matter as long as we read it back properly.
+            net.minecraft.nbt.StringTag stringTag = net.minecraft.nbt.StringTag.valueOf(biomeKey.location().toString());
+            stackTag.add(stringTag);
+        }
+        tag.put(PREVIOUS_BIOME, stackTag); // Reuse PREVIOUS_BIOME key for backwards compatibility conceptually, or just use it.
+        
         if (activePathId != null) {
             tag.putString(ACTIVE_PATH_ID, activePathId.toString());
         }
@@ -348,7 +373,23 @@ public final class SuccessionChunkData implements INBTSerializable<CompoundTag> 
     public void deserializeNBT(HolderLookup.Provider provider, CompoundTag tag) {
         currentBiome = readBiomeKey(tag, CURRENT_BIOME);
         targetBiome = readBiomeKey(tag, TARGET_BIOME);
-        previousBiome = readBiomeKey(tag, PREVIOUS_BIOME);
+        
+        biomeStack.clear();
+        if (tag.contains(PREVIOUS_BIOME, Tag.TAG_LIST)) {
+            ListTag stackTag = tag.getList(PREVIOUS_BIOME, Tag.TAG_STRING);
+            for (Tag t : stackTag) {
+                String biomeId = t.getAsString();
+                if (!biomeId.isEmpty()) {
+                    biomeStack.addLast(ResourceKey.create(Registries.BIOME, ResourceLocation.parse(biomeId)));
+                }
+            }
+        } else if (tag.contains(PREVIOUS_BIOME, Tag.TAG_STRING)) {
+            ResourceKey<Biome> prev = readBiomeKey(tag, PREVIOUS_BIOME);
+            if (prev != null) {
+                biomeStack.push(prev);
+            }
+        }
+        
         String storedPathId = tag.getString(ACTIVE_PATH_ID);
         activePathId = storedPathId.isEmpty() ? null : ResourceLocation.parse(storedPathId);
         String storedBiomeRulesId = tag.getString(ACTIVE_BIOME_RULES_ID);
