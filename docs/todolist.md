@@ -1,7 +1,11 @@
 # TODO List
 
 > 最后更新: 2026-06-16
-
+建议：
+1.适配HT's TreeChop
+重新生长得树无法被HT's TreeChop识别成完整树，导致树木需要自己慢慢搭上去然后砍下来
+2.适配其他模组的树或添加树白名单？如超多生物群系Biomes O' Plenty
+3.树木演化多样性，现在生成的树木基本都一个样
 以下待办基于当前代码实现状态整理。
 
 ## 近期完成 (2026-06-14/15)
@@ -126,8 +130,8 @@
 
 ## 已知待修复项
 
-### spawn_rules.placement
-`spawn_rules.placement` 字段已解析但 `findSpawnPos()` 未完全使用。当前实际使用 `require_sky`、`max_local_density`、`allowed_base_blocks` 三个字段。
+### spawn_rules.placement ✅
+- [x] 从 JSON 和文档中移除未被使用的 `placement` 字段（2026-07-21）
 
 ### succession-editor 与最新 schema 同步
 编辑器目前仍导出旧格式（含 `plants[]`），需要更新以反映 2026-06-14 的 schema 变更（`plants[]` 移除，`chunk_rules` 简化）。参见 `docs/succession-editor.md` Phase 3。

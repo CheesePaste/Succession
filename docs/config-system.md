@@ -180,7 +180,6 @@ src/main/resources/data/ecoflux/
       "point_value": 2,
       "max_age_ticks": 72000,
       "spawn_rules": {
-        "placement": "surface",
         "require_sky": true,
         "max_local_density": 6,
         "allowed_base_blocks": [
@@ -204,7 +203,6 @@ src/main/resources/data/ecoflux/
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `placement` | string | 放置策略标识，已解析但 `findSpawnPos()` 未完全使用 |
 | `require_sky` | bool | 是否需要天空光照 |
 | `max_local_density` | int | 附近同类型植物密度上限 |
 | `allowed_base_blocks` | string[] | 允许种植的基底方块 |
@@ -280,7 +278,6 @@ Chunk 加载
 
 ## 已知限制
 
-- `spawn_rules.placement` 已解析但 `findSpawnPos()` 未完全使用
 - 配置文件依赖 `/reload` 或重启才能更新（运行时无法动态添加）
 
 ## 如何添加新的演替路径

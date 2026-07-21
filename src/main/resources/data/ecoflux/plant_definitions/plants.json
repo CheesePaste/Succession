@@ -6,7 +6,6 @@
       "point_value": 1,
       "max_age_ticks": 60000,
       "spawn_rules": {
-        "placement": "surface",
         "require_sky": true,
         "max_local_density": 8,
         "allowed_base_blocks": [
@@ -26,7 +25,6 @@
       "point_value": 1,
       "max_age_ticks": 60000,
       "spawn_rules": {
-        "placement": "surface",
         "require_sky": false,
         "max_local_density": 6,
         "allowed_base_blocks": [
@@ -45,7 +43,6 @@
       "point_value": 2,
       "max_age_ticks": 72000,
       "spawn_rules": {
-        "placement": "surface",
         "require_sky": true,
         "max_local_density": 6,
         "allowed_base_blocks": [
@@ -64,7 +61,6 @@
       "point_value": 2,
       "max_age_ticks": 72000,
       "spawn_rules": {
-        "placement": "surface",
         "require_sky": true,
         "max_local_density": 6,
         "allowed_base_blocks": [
@@ -83,7 +79,6 @@
       "point_value": 2,
       "max_age_ticks": 60000,
       "spawn_rules": {
-        "placement": "surface",
         "require_sky": true,
         "max_local_density": 6,
         "allowed_base_blocks": [
@@ -102,7 +97,6 @@
       "point_value": 2,
       "max_age_ticks": 60000,
       "spawn_rules": {
-        "placement": "surface",
         "require_sky": true,
         "max_local_density": 6,
         "allowed_base_blocks": [
@@ -121,7 +115,6 @@
       "point_value": 3,
       "max_age_ticks": 72000,
       "spawn_rules": {
-        "placement": "surface",
         "require_sky": true,
         "max_local_density": 6,
         "allowed_base_blocks": [
@@ -140,7 +133,6 @@
       "point_value": 3,
       "max_age_ticks": 96000,
       "spawn_rules": {
-        "placement": "surface",
         "require_sky": true,
         "max_local_density": 6,
         "allowed_base_blocks": [
@@ -159,7 +151,6 @@
       "point_value": 4,
       "max_age_ticks": 120000,
       "spawn_rules": {
-        "placement": "surface",
         "require_sky": true,
         "max_local_density": 4,
         "allowed_base_blocks": [
@@ -178,7 +169,6 @@
       "point_value": 3,
       "max_age_ticks": 96000,
       "spawn_rules": {
-        "placement": "surface",
         "require_sky": true,
         "max_local_density": 4,
         "allowed_base_blocks": [
@@ -197,7 +187,6 @@
       "point_value": 2,
       "max_age_ticks": 48000,
       "spawn_rules": {
-        "placement": "surface",
         "require_sky": false,
         "max_local_density": 4,
         "allowed_base_blocks": [
@@ -218,7 +207,6 @@
       "point_value": 2,
       "max_age_ticks": 48000,
       "spawn_rules": {
-        "placement": "surface",
         "require_sky": false,
         "max_local_density": 4,
         "allowed_base_blocks": [
@@ -239,7 +227,6 @@
       "point_value": 4,
       "max_age_ticks": 144000,
       "spawn_rules": {
-        "placement": "surface",
         "require_sky": true,
         "max_local_density": 3,
         "allowed_base_blocks": [
@@ -258,7 +245,6 @@
       "point_value": 5,
       "max_age_ticks": 168000,
       "spawn_rules": {
-        "placement": "surface",
         "require_sky": true,
         "max_local_density": 3,
         "allowed_base_blocks": [
@@ -277,7 +263,6 @@
       "point_value": 5,
       "max_age_ticks": 180000,
       "spawn_rules": {
-        "placement": "surface",
         "require_sky": true,
         "max_local_density": 3,
         "allowed_base_blocks": [
@@ -296,7 +281,6 @@
       "point_value": 6,
       "max_age_ticks": 200000,
       "spawn_rules": {
-        "placement": "surface",
         "require_sky": true,
         "max_local_density": 2,
         "allowed_base_blocks": [
@@ -315,7 +299,6 @@
       "point_value": 4,
       "max_age_ticks": 168000,
       "spawn_rules": {
-        "placement": "surface",
         "require_sky": true,
         "max_local_density": 3,
         "allowed_base_blocks": [
@@ -334,7 +317,6 @@
       "point_value": 6,
       "max_age_ticks": 200000,
       "spawn_rules": {
-        "placement": "surface",
         "require_sky": true,
         "max_local_density": 3,
         "allowed_base_blocks": [
@@ -353,7 +335,6 @@
       "point_value": 5,
       "max_age_ticks": 168000,
       "spawn_rules": {
-        "placement": "surface",
         "require_sky": true,
         "max_local_density": 3,
         "allowed_base_blocks": [
@@ -372,7 +353,6 @@
       "point_value": 5,
       "max_age_ticks": 180000,
       "spawn_rules": {
-        "placement": "surface",
         "require_sky": true,
         "max_local_density": 4,
         "allowed_base_blocks": [
@@ -388,68 +368,67 @@
       "plant_id": "minecraft:oak_log",
       "point_value": 12,
       "max_age_ticks": 192000,
-      "spawn_rules": { "placement": "none", "require_sky": false, "max_local_density": 1, "allowed_base_blocks": [] }
+      "spawn_rules": {"require_sky": false, "max_local_density": 1, "allowed_base_blocks": [] }
     },
     {
       "plant_id": "minecraft:birch_log",
       "point_value": 10,
       "max_age_ticks": 144000,
-      "spawn_rules": { "placement": "none", "require_sky": false, "max_local_density": 1, "allowed_base_blocks": [] }
+      "spawn_rules": {"require_sky": false, "max_local_density": 1, "allowed_base_blocks": [] }
     },
     {
       "plant_id": "minecraft:spruce_log",
       "point_value": 15,
       "max_age_ticks": 288000,
-      "spawn_rules": { "placement": "none", "require_sky": false, "max_local_density": 1, "allowed_base_blocks": [] }
+      "spawn_rules": {"require_sky": false, "max_local_density": 1, "allowed_base_blocks": [] }
     },
     {
       "plant_id": "minecraft:cherry_log",
       "point_value": 10,
       "max_age_ticks": 192000,
-      "spawn_rules": { "placement": "none", "require_sky": false, "max_local_density": 1, "allowed_base_blocks": [] }
+      "spawn_rules": {"require_sky": false, "max_local_density": 1, "allowed_base_blocks": [] }
     },
     {
       "plant_id": "minecraft:jungle_log",
       "point_value": 15,
       "max_age_ticks": 288000,
-      "spawn_rules": { "placement": "none", "require_sky": false, "max_local_density": 1, "allowed_base_blocks": [] }
+      "spawn_rules": {"require_sky": false, "max_local_density": 1, "allowed_base_blocks": [] }
     },
     {
       "plant_id": "minecraft:acacia_log",
       "point_value": 12,
       "max_age_ticks": 192000,
-      "spawn_rules": { "placement": "none", "require_sky": false, "max_local_density": 1, "allowed_base_blocks": [] }
+      "spawn_rules": {"require_sky": false, "max_local_density": 1, "allowed_base_blocks": [] }
     },
     {
       "plant_id": "minecraft:mangrove_log",
       "point_value": 15,
       "max_age_ticks": 216000,
-      "spawn_rules": { "placement": "none", "require_sky": false, "max_local_density": 1, "allowed_base_blocks": [] }
+      "spawn_rules": {"require_sky": false, "max_local_density": 1, "allowed_base_blocks": [] }
     },
     {
       "plant_id": "minecraft:dark_oak_log",
       "point_value": 18,
       "max_age_ticks": 288000,
-      "spawn_rules": { "placement": "none", "require_sky": false, "max_local_density": 1, "allowed_base_blocks": [] }
+      "spawn_rules": {"require_sky": false, "max_local_density": 1, "allowed_base_blocks": [] }
     },
     {
       "plant_id": "minecraft:brown_mushroom_block",
       "point_value": 6,
       "max_age_ticks": 120000,
-      "spawn_rules": { "placement": "none", "require_sky": false, "max_local_density": 1, "allowed_base_blocks": [] }
+      "spawn_rules": {"require_sky": false, "max_local_density": 1, "allowed_base_blocks": [] }
     },
     {
       "plant_id": "minecraft:red_mushroom_block",
       "point_value": 6,
       "max_age_ticks": 120000,
-      "spawn_rules": { "placement": "none", "require_sky": false, "max_local_density": 1, "allowed_base_blocks": [] }
+      "spawn_rules": {"require_sky": false, "max_local_density": 1, "allowed_base_blocks": [] }
     },
     {
       "plant_id": "minecraft:tall_grass",
       "point_value": 2,
       "max_age_ticks": 72000,
       "spawn_rules": {
-        "placement": "surface",
         "require_sky": true,
         "max_local_density": 6,
         "allowed_base_blocks": [
@@ -468,7 +447,6 @@
       "point_value": 1,
       "max_age_ticks": 48000,
       "spawn_rules": {
-        "placement": "surface",
         "require_sky": true,
         "max_local_density": 4,
         "allowed_base_blocks": [
@@ -484,7 +462,6 @@
       "point_value": 2,
       "max_age_ticks": 60000,
       "spawn_rules": {
-        "placement": "surface",
         "require_sky": true,
         "max_local_density": 4,
         "allowed_base_blocks": [
