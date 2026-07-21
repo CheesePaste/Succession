@@ -3,7 +3,6 @@ import type { PathGraphEdge } from "../../model/types";
 import { PathIdentityEditor } from "./editors/PathIdentityEditor";
 import { ClimateEditor } from "./editors/ClimateEditor";
 import { ChunkRulesEditor } from "./editors/ChunkRulesEditor";
-import { PlantTableEditor } from "./editors/PlantTableEditor";
 import { useT } from "../../i18n/I18nContext";
 
 interface Props {
@@ -20,7 +19,6 @@ export function PathProperties({ edge }: Props) {
       <PathIdentityEditor edge={edge} onChange={(p) => updateEdgeData(edge.id, p)} />
       <ClimateEditor edge={edge} onChange={(p) => updateEdgeData(edge.id, p)} />
       <ChunkRulesEditor edge={edge} onChange={(p) => updateEdgeData(edge.id, p)} />
-      <PlantTableEditor edge={edge} />
 
       <div className="prop-section">
         <button

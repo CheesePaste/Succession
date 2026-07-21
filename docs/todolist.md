@@ -1,6 +1,6 @@
 # TODO List
 
-> 最后更新: 2026-06-16
+> 最后更新: 2026-07-21
 建议：
 1.适配HT's TreeChop
 重新生长得树无法被HT's TreeChop识别成完整树，导致树木需要自己慢慢搭上去然后砍下来
@@ -133,8 +133,10 @@
 ### spawn_rules.placement ✅
 - [x] 从 JSON 和文档中移除未被使用的 `placement` 字段（2026-07-21）
 
-### succession-editor 与最新 schema 同步
-编辑器目前仍导出旧格式（含 `plants[]`），需要更新以反映 2026-06-14 的 schema 变更（`plants[]` 移除，`chunk_rules` 简化）。参见 `docs/succession-editor.md` Phase 3。
+### succession-editor 与最新 schema 同步 ✅
+- [x] 导出格式更新：移除 `plants[]`、简化 `chunkRules`（2026-07-21）
+- [x] `placement` 字段从编辑器移除
+- [x] Phase 3 BiomeRules 编辑器实现（页面 + 表格 + 详情面板）
 
 ### 演替系统整合
 当前演替循环各部分独立工作（扫描、追踪、生成、修剪、评估、转换），但完整的端到端演替流程（世界生成 → 演替进行 → 群系转换）的整合测试和调试仍在进行中。

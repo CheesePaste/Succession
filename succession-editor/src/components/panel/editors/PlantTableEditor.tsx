@@ -1,12 +1,14 @@
 import { useState, useMemo } from "react";
-import { useEditorStore } from "../../../store/editorStore";
-import type { PathGraphEdge, PlantDefinition } from "../../../model/types";
+import type { PlantDefinition } from "../../../model/types";
 import { defaultPlant } from "../../../model/defaults";
 import { SpawnRulesEditor } from "./SpawnRulesEditor";
 import { useT } from "../../../i18n/I18nContext";
 
 interface Props {
-  edge: PathGraphEdge;
+  plants: PlantDefinition[];
+  onAdd: (plant: PlantDefinition) => void;
+  onRemove: (index: number) => void;
+  onUpdate: (index: number, patch: Partial<PlantDefinition>) => void;
 }
 
 const CATEGORIES = ["ground_cover", "flower", "sapling", "mushroom", "tree", "vine", "crop"];
@@ -61,24 +63,20 @@ function groupPlantsByCategory(): Map<string, string[]> {
   return groups;
 }
 
-export function PlantTableEditor({ edge }: Props) {
+export function PlantTableEditor({ plants, onAdd, onRemove, onUpdate }: Props) {
   const { t } = useT();
   const [collapsed, setCollapsed] = useState(false);
   const [expandedPlant, setExpandedPlant] = useState<number | null>(null);
-  const addPlant = useEditorStore((s) => s.addPlant);
-  const removePlant = useEditorStore((s) => s.removePlant);
-  const updatePlant = useEditorStore((s) => s.updatePlant);
   const [quickAddKey, setQuickAddKey] = useState(0);
 
-  const plants = edge.data!.plants;
   const totalWeight = plants.reduce((sum, p) => sum + p.weight, 0);
   const plantGroups = useMemo(() => groupPlantsByCategory(), []);
 
   const handleQuickAdd = (plantId: string) => {
     const plant = defaultPlant(plantId);
-    addPlant(edge.id, plant);
+    onAdd(plant);
     setExpandedPlant(plants.length);
-    setQuickAddKey((k) => k + 1); // reset select
+    setQuickAddKey((k) => k + 1);
   };
 
   return (
@@ -94,7 +92,6 @@ export function PlantTableEditor({ edge }: Props) {
 
       {!collapsed && (
         <>
-          {/* Plant table */}
           <div style={{ overflowX: "auto", marginBottom: 8 }}>
             <table className="plant-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
               <thead>
@@ -117,8 +114,11 @@ export function PlantTableEditor({ edge }: Props) {
                     onToggleExpand={() =>
                       setExpandedPlant(expandedPlant === idx ? null : idx)
                     }
-                    onUpdate={(patch) => updatePlant(edge.id, idx, patch)}
-                    onRemove={() => removePlant(edge.id, idx)}
+                    onUpdate={(patch) => onUpdate(idx, patch)}
+                    onRemove={() => {
+                      onRemove(idx);
+                      setExpandedPlant(expandedPlant === idx ? null : expandedPlant);
+                    }}
                   />
                 ))}
               </tbody>
@@ -131,7 +131,6 @@ export function PlantTableEditor({ edge }: Props) {
             </div>
           )}
 
-          {/* Quick-add plant dropdown */}
           <div style={{ marginBottom: 6 }}>
             <select
               key={quickAddKey}
@@ -167,7 +166,8 @@ export function PlantTableEditor({ edge }: Props) {
 
           <button
             onClick={() => {
-              addPlant(edge.id);
+              const plant = defaultPlant();
+              onAdd(plant);
               setExpandedPlant(plants.length);
             }}
             style={{

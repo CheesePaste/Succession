@@ -24,12 +24,6 @@ export function defaultClimate(): ClimateCondition {
 
 export function defaultChunkRules(): ChunkRules {
   return {
-    consuming: 5,
-    maxPlantCount: 8,
-    queueFillFactor: 2.0,
-    evaluationIntervalDays: { min: 1, max: 1 },
-    processingIntervalTicks: 100,
-    evaluationIntervalTicks: 0,
     positiveProgressStep: 0.25,
     negativeProgressStep: 0.25,
   };
@@ -37,14 +31,16 @@ export function defaultChunkRules(): ChunkRules {
 
 export function defaultSpawnRules(): PlantSpawnRules {
   return {
-    placement: "surface",
     requireSky: true,
     maxLocalDensity: 4,
     allowedBaseBlocks: ["minecraft:grass_block", "minecraft:dirt"],
   };
 }
 
-export function defaultPlant(plantId = "minecraft:short_grass"): PlantDefinition {
+export function defaultPlant(
+  plantId = "minecraft:short_grass",
+  overrides?: Partial<PlantDefinition>,
+): PlantDefinition {
   const info = inferPlantCategory(plantId);
   return {
     plantId,
@@ -53,6 +49,7 @@ export function defaultPlant(plantId = "minecraft:short_grass"): PlantDefinition
     pointValue: info.pointValue,
     maxAgeTicks: info.maxAgeTicks,
     spawnRules: defaultSpawnRules(),
+    ...overrides,
   };
 }
 
@@ -92,6 +89,5 @@ export function defaultEdgeData(
     priority: 10,
     climate: defaultClimate(),
     chunkRules: defaultChunkRules(),
-    plants: [defaultPlant()],
   };
 }

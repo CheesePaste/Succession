@@ -17,18 +17,11 @@ export interface ClimateCondition {
 }
 
 export interface ChunkRules {
-  consuming: number;
-  maxPlantCount: number;
-  queueFillFactor: number;
-  evaluationIntervalDays: IntRange;
-  processingIntervalTicks: number;
-  evaluationIntervalTicks: number;
   positiveProgressStep: number;
   negativeProgressStep: number;
 }
 
 export interface PlantSpawnRules {
-  placement: string;
   requireSky: boolean;
   maxLocalDensity: number;
   allowedBaseBlocks: string[];
@@ -52,7 +45,23 @@ export interface SuccessionPath {
   fallbackBiome: string | null;
   climate: ClimateCondition;
   chunkRules: ChunkRules;
-  plants: PlantDefinition[];
+}
+
+// ===== Biome Rules (Phase 3) =====
+
+export interface BiomeRulePlantEntry {
+  plantId: string;
+  weight: number;
+}
+
+export interface BiomeRules {
+  schemaVersion: 1;
+  biomeId: string;
+  minPlantCount: number;
+  maxPlantCount: number;
+  consuming: number;
+  queueFillFactor: number;
+  plants: BiomeRulePlantEntry[];
 }
 
 // ===== Graph Model (ReactFlow) =====
@@ -76,7 +85,6 @@ export interface PathEdgeData extends Record<string, unknown> {
   priority: number;
   climate: ClimateCondition;
   chunkRules: ChunkRules;
-  plants: PlantDefinition[];
   conditionBranch?: "match" | "no_match";
   parentConditionId?: string;
   sourceBiome?: string;

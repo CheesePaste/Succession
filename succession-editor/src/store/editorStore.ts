@@ -1,9 +1,9 @@
 import { create } from "zustand";
 import type { NodeChange, EdgeChange } from "@xyflow/react";
 import { applyNodeChanges, applyEdgeChanges } from "@xyflow/react";
-import type { BiomeGraphNode, GraphNode, PathGraphEdge, PathEdgeData, ConditionGraphNode, ValidationError, PlantDefinition } from "../model/types";
+import type { BiomeGraphNode, GraphNode, PathGraphEdge, PathEdgeData, ConditionGraphNode, ValidationError } from "../model/types";
 import { getBiomeMeta } from "../model/biomeData";
-import { defaultEdgeData, defaultPlant, defaultConditionData } from "../model/defaults";
+import { defaultEdgeData, defaultConditionData } from "../model/defaults";
 
 let nextNodeId = 0;
 let nextEdgeId = 0;
@@ -50,10 +50,6 @@ interface EditorState {
   updateEdgeData: (edgeId: string, patch: Partial<PathEdgeData>) => void;
 
   setSelectedId: (id: string | null) => void;
-
-  addPlant: (edgeId: string, plant?: PlantDefinition) => void;
-  removePlant: (edgeId: string, plantIndex: number) => void;
-  updatePlant: (edgeId: string, plantIndex: number, patch: Partial<PlantDefinition>) => void;
 
   loadGraph: (nodes: GraphNode[], edges: PathGraphEdge[]) => void;
   clearGraph: () => void;
@@ -253,48 +249,6 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
     set({ selectedId: id });
   },
 
-  addPlant(edgeId, plant?) {
-    const newPlant = plant ?? defaultPlant();
-    const updated = get().edges.map((e) => {
-      if (e.id !== edgeId) return e;
-      return {
-        ...e,
-        data: { ...e.data!, plants: [...e.data!.plants, newPlant] },
-      } as PathGraphEdge;
-    });
-    set({ edges: updated });
-  },
-
-  removePlant(edgeId, plantIndex) {
-    const updated = get().edges.map((e) => {
-      if (e.id !== edgeId) return e;
-      return {
-        ...e,
-        data: {
-          ...e.data!,
-          plants: e.data!.plants.filter((_, i) => i !== plantIndex),
-        },
-      } as PathGraphEdge;
-    });
-    set({ edges: updated });
-  },
-
-  updatePlant(edgeId, plantIndex, patch) {
-    const updated = get().edges.map((e) => {
-      if (e.id !== edgeId) return e;
-      return {
-        ...e,
-        data: {
-          ...e.data!,
-          plants: e.data!.plants.map((p, i) =>
-            i === plantIndex ? { ...p, ...patch } : p,
-          ),
-        },
-      } as PathGraphEdge;
-    });
-    set({ edges: updated });
-  },
-
   loadGraph(nodes: GraphNode[], edges: PathGraphEdge[]) {
     nodes.forEach((n) => {
       const num = parseInt(n.id.replace("node_", ""), 10);
@@ -353,46 +307,18 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
           field: "climate.downfall", message: "downfall min > max",
         });
       }
-      if (d.chunkRules.consuming < 0) {
+      if (d.chunkRules.positiveProgressStep <= 0) {
         errors.push({
           type: "error", targetId: edge.id, targetType: "edge",
-          field: "chunkRules.consuming", message: "consuming must be >= 0",
+          field: "chunkRules.positiveProgressStep", message: "positiveProgressStep must be > 0",
         });
       }
-      if (d.chunkRules.maxPlantCount <= 0) {
+      if (d.chunkRules.negativeProgressStep <= 0) {
         errors.push({
           type: "error", targetId: edge.id, targetType: "edge",
-          field: "chunkRules.maxPlantCount", message: "maxPlantCount must be > 0",
+          field: "chunkRules.negativeProgressStep", message: "negativeProgressStep must be > 0",
         });
       }
-      if (d.chunkRules.queueFillFactor < 1.0) {
-        errors.push({
-          type: "error", targetId: edge.id, targetType: "edge",
-          field: "chunkRules.queueFillFactor", message: "queueFillFactor must be >= 1.0",
-        });
-      }
-      if (d.plants.length === 0) {
-        errors.push({
-          type: "error", targetId: edge.id, targetType: "edge",
-          field: "plants", message: "At least one plant is required",
-        });
-      }
-      d.plants.forEach((plant, idx) => {
-        if (!plant.plantId || plant.plantId.trim() === "") {
-          errors.push({
-            type: "error", targetId: edge.id, targetType: "edge",
-            field: `plants[${idx}].plantId`,
-            message: `Plant #${idx + 1}: plant_id is required`,
-          });
-        }
-        if (plant.weight <= 0) {
-          errors.push({
-            type: "error", targetId: edge.id, targetType: "edge",
-            field: `plants[${idx}].weight`,
-            message: `Plant #${idx + 1}: weight must be > 0`,
-          });
-        }
-      });
     }
 
     for (const node of nodes) {

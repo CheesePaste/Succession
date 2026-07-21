@@ -99,20 +99,30 @@ succession-editor/
 - [x] 撤销/重做、键盘快捷键（Ctrl+Z/Y、Delete、Escape）
 - [x] 中英双语、错误边界
 
-### Phase 2：条件分支节点 + 植物快速选择 ✅ (2026-06-09)
+### Phase 2：条件分支节点 + 植物快速选择 ✅
 
 - [x] ClimateConditionNode 菱形节点（match/no_match 双输出端口）
 - [x] ConditionProperties 编辑器
 - [x] PlantTableEditor quick-add 下拉框（48 种常见植物按 category 分组）
-- [ ] 导出时展平条件分支为独立路径
-- [ ] 导入时自动检测分支还原条件节点
+- [x] 导出格式同步 2026-06-14 schema（移除 plants[]，简化 chunk_rules）
 
-### Phase 3：BiomeRules 编辑器 + 高级编排（计划中）
+### Phase 3：BiomeRules 编辑器 ✅
 
-> **注意**: 2026-06-14 重构后，`plants[]` 已从路径 JSON 移至 `biome_rules/`。编辑器不再需要内联植物列表功能。
+- [x] BiomeRules 页面：搜索栏 + 表格总览 + 详情编辑面板
+- [x] 支持导入/导出 biome_rules JSON（兼容单文件和多文件格式）
+- [x] 植物列表配置复用 PlantTableEditor
+- [x] 页面 tab 切换（演替路径 / 群系规则）
 
-- [ ] BiomeRules 编辑器：可视化编辑群系植物规则（maxPlantCount, consuming, plants[], queueFillFactor）
-- [ ] 植物列表配置：在 BiomeRules 编辑面板中按权重编辑植物列表（不再在路径中内联）
+## 需要继续的
+
+### 编辑器落伍修复
+
+- [x] 导出格式更新：移除 `plants[]`、简化 `chunkRules`（2026-07-21）
+- [x] `placement` 字段从编辑器移除（对应 Java 端清理）
+- [x] 添加页面切换 Tab 栏
+
+### Phase 3 未完成
+
 - [ ] PriorityRouterNode
 - [ ] 全局 DAG 预览（所有路径汇总）
 - [ ] 群系覆盖分析

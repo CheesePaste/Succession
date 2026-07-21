@@ -60,31 +60,9 @@ export function importPaths(
             downfall: { ...path.climate.downfall },
           },
           chunkRules: {
-            consuming: path.chunkRules.consuming,
-            maxPlantCount: path.chunkRules.maxPlantCount,
-            queueFillFactor: path.chunkRules.queueFillFactor,
-            evaluationIntervalDays: {
-              min: path.chunkRules.evaluationIntervalDays.min,
-              max: path.chunkRules.evaluationIntervalDays.max,
-            },
-            processingIntervalTicks: path.chunkRules.processingIntervalTicks,
-            evaluationIntervalTicks: path.chunkRules.evaluationIntervalTicks,
             positiveProgressStep: path.chunkRules.positiveProgressStep,
             negativeProgressStep: path.chunkRules.negativeProgressStep,
           },
-          plants: path.plants.map((p) => ({
-            plantId: p.plantId,
-            category: p.category,
-            weight: p.weight,
-            pointValue: p.pointValue,
-            maxAgeTicks: p.maxAgeTicks,
-            spawnRules: {
-              placement: p.spawnRules.placement,
-              requireSky: p.spawnRules.requireSky,
-              maxLocalDensity: p.spawnRules.maxLocalDensity,
-              allowedBaseBlocks: [...p.spawnRules.allowedBaseBlocks],
-            },
-          })),
         },
       };
 

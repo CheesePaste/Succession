@@ -1,67 +1,76 @@
-import { ReactFlowProvider } from "@xyflow/react";
-import { Toolbar } from "./components/toolbar/Toolbar";
-import { BiomePalette } from "./components/palette/BiomePalette";
-import { GraphCanvas } from "./components/canvas/GraphCanvas";
-import { PropertyPanel } from "./components/panel/PropertyPanel";
-import { PlantDatalists } from "./components/panel/editors/PlantTableEditor";
+import { useState } from "react";
+import { SuccessionPathPage } from "./SuccessionPathPage";
+import { BiomeRulesPage } from "./BiomeRulesPage";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { I18nProvider } from "./i18n/I18nContext";
-import { useEditorStore } from "./store/editorStore";
-import { useEffect } from "react";
+import { I18nProvider, useT } from "./i18n/I18nContext";
 import "./App.css";
 
-function KeyboardHandler() {
-  const undo = useEditorStore((s) => s.undo);
-  const redo = useEditorStore((s) => s.redo);
+type Page = "paths" | "biomes";
 
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      if (
-        target.tagName === "INPUT" ||
-        target.tagName === "SELECT" ||
-        target.tagName === "TEXTAREA" ||
-        target.isContentEditable
-      ) {
-        return;
-      }
+function TabBar({ page, onPageChange }: { page: Page; onPageChange: (p: Page) => void }) {
+  const { t } = useT();
+  return (
+    <div
+      style={{
+        display: "flex",
+        background: "#0f0f20",
+        borderBottom: "1px solid #333",
+        padding: "0 12px",
+      }}
+    >
+      <TabButton
+        active={page === "paths"}
+        onClick={() => onPageChange("paths")}
+      >
+        {t("tab.paths")}
+      </TabButton>
+      <TabButton
+        active={page === "biomes"}
+        onClick={() => onPageChange("biomes")}
+      >
+        {t("tab.biomes")}
+      </TabButton>
+    </div>
+  );
+}
 
-      if ((e.ctrlKey || e.metaKey) && e.key === "z") {
-        e.preventDefault();
-        undo();
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key === "y") {
-        e.preventDefault();
-        redo();
-      }
-      if (e.key === "Escape") {
-        useEditorStore.getState().setSelectedId(null);
-      }
-    };
+function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        padding: "10px 20px",
+        background: "none",
+        border: "none",
+        borderBottom: active ? "2px solid #4caf50" : "2px solid transparent",
+        color: active ? "#4caf50" : "#888",
+        cursor: "pointer",
+        fontSize: 14,
+        fontWeight: active ? "bold" : "normal",
+        transition: "all 0.15s",
+      }}
+    >
+      {children}
+    </button>
+  );
+}
 
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [undo, redo]);
+function AppContent() {
+  const [page, setPage] = useState<Page>("paths");
 
-  return null;
+  return (
+    <div className="app-container">
+      <TabBar page={page} onPageChange={setPage} />
+      {page === "paths" ? <SuccessionPathPage /> : <BiomeRulesPage />}
+    </div>
+  );
 }
 
 export default function App() {
   return (
     <ErrorBoundary>
       <I18nProvider>
-        <ReactFlowProvider>
-        <PlantDatalists />
-        <KeyboardHandler />
-        <div className="app-container">
-          <Toolbar />
-          <div className="main-content">
-            <BiomePalette />
-            <GraphCanvas />
-            <PropertyPanel />
-          </div>
-        </div>
-      </ReactFlowProvider>
+        <AppContent />
       </I18nProvider>
     </ErrorBoundary>
   );

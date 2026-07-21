@@ -7,7 +7,6 @@ interface Props {
   onChange: (rules: PlantSpawnRules) => void;
 }
 
-const PLACEMENTS = ["surface", "underground", "water", "any"];
 const COMMON_BLOCKS = [
   "minecraft:grass_block",
   "minecraft:dirt",
@@ -72,7 +71,6 @@ export function SpawnRulesEditor({ spawnRules, onChange }: Props) {
         <span>{collapsed ? "▶" : "▼"} {t("plant.spawnRules")}</span>
         <span style={{ fontSize: 9, color: "#666" }}>
           {t("plant.spawnSummary")
-            .replace("{placement}", spawnRules.placement)
             .replace("{sky}", spawnRules.requireSky ? "✓" : "✗")
             .replace("{blocks}", String(spawnRules.allowedBaseBlocks.length))}
         </span>
@@ -80,33 +78,16 @@ export function SpawnRulesEditor({ spawnRules, onChange }: Props) {
 
       {!collapsed && (
         <>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, marginBottom: 6 }}>
-            <div>
-              <label style={{ color: "#888", fontSize: 10 }}>{t("spawn.placement")}</label>
-              <select
-                value={spawnRules.placement}
-                onChange={(e) => setField("placement", e.target.value)}
-                className="prop-input"
-                style={{ width: "100%", fontSize: 10, padding: "2px 4px" }}
-              >
-                {PLACEMENTS.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label style={{ color: "#888", fontSize: 10 }}>{t("spawn.density")}</label>
-              <input
-                type="number"
-                value={spawnRules.maxLocalDensity}
-                onChange={(e) => setField("maxLocalDensity", parseInt(e.target.value) || 1)}
-                className="prop-input"
-                style={{ width: "100%", fontSize: 10, padding: "2px 4px" }}
-                min={1}
-              />
-            </div>
+          <div style={{ marginBottom: 4 }}>
+            <label style={{ color: "#888", fontSize: 10 }}>{t("spawn.density")}</label>
+            <input
+              type="number"
+              value={spawnRules.maxLocalDensity}
+              onChange={(e) => setField("maxLocalDensity", parseInt(e.target.value) || 1)}
+              className="prop-input"
+              style={{ width: "100%", fontSize: 10, padding: "2px 4px" }}
+              min={1}
+            />
           </div>
 
           <div style={{ marginBottom: 4 }}>

@@ -14,11 +14,6 @@ export function NoSelection({ nodeCount, edgeCount }: Props) {
   const sourceBiomes = new Set(edges.map((e) => (nodes.find((n) => n.id === e.source)?.data as any)?.biomeId).filter(Boolean));
   const targetBiomes = new Set(edges.map((e) => (nodes.find((n) => n.id === e.target)?.data as any)?.biomeId).filter(Boolean));
 
-  const totalPlants = edges.reduce((sum, e) => sum + (e.data?.plants.length ?? 0), 0);
-  const uniquePlants = new Set(
-    edges.flatMap((e) => (e.data?.plants ?? []).map((p) => p.plantId)),
-  );
-
   return (
     <div style={{ padding: 16 }}>
       <div style={{ marginBottom: 20 }}>
@@ -28,8 +23,6 @@ export function NoSelection({ nodeCount, edgeCount }: Props) {
           <StatBox label={t("overview.paths")} value={edgeCount} />
           <StatBox label={t("overview.sourceBiomes")} value={sourceBiomes.size} />
           <StatBox label={t("overview.targetBiomes")} value={targetBiomes.size} />
-          <StatBox label={t("overview.totalPlants")} value={totalPlants} />
-          <StatBox label={t("overview.uniquePlants")} value={uniquePlants.size} />
         </div>
       </div>
 
@@ -98,9 +91,6 @@ export function NoSelection({ nodeCount, edgeCount }: Props) {
                 >
                   {((srcNode?.data as any)?.biomeId ?? "?").replace("minecraft:", "")} →{" "}
                   {((tgtNode?.data as any)?.biomeId ?? "?").replace("minecraft:", "")}
-                  <span style={{ color: "#666", marginLeft: 6 }}>
-                    ({edge.data?.plants.length ?? 0}{t("overview.plantsSuffix")})
-                  </span>
                 </div>
               );
             })}

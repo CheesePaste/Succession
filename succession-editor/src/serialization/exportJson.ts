@@ -6,7 +6,7 @@ function buildPath(
   sourceBiomeId: string,
   targetBiomeId: string,
   climate: ClimateCondition,
-  d: NonNullable<PathGraphEdge["data"]>,
+  chunkRules: { positiveProgressStep: number; negativeProgressStep: number },
 ): SuccessionPath {
   return {
     schemaVersion: 1,
@@ -20,31 +20,9 @@ function buildPath(
       downfall: { ...climate.downfall },
     },
     chunkRules: {
-      consuming: d.chunkRules.consuming,
-      maxPlantCount: d.chunkRules.maxPlantCount,
-      queueFillFactor: d.chunkRules.queueFillFactor,
-      evaluationIntervalDays: {
-        min: d.chunkRules.evaluationIntervalDays.min,
-        max: d.chunkRules.evaluationIntervalDays.max,
-      },
-      processingIntervalTicks: d.chunkRules.processingIntervalTicks,
-      evaluationIntervalTicks: d.chunkRules.evaluationIntervalTicks,
-      positiveProgressStep: d.chunkRules.positiveProgressStep,
-      negativeProgressStep: d.chunkRules.negativeProgressStep,
+      positiveProgressStep: chunkRules.positiveProgressStep,
+      negativeProgressStep: chunkRules.negativeProgressStep,
     },
-    plants: d.plants.map((p) => ({
-      plantId: p.plantId,
-      category: p.category,
-      weight: p.weight,
-      pointValue: p.pointValue,
-      maxAgeTicks: p.maxAgeTicks,
-      spawnRules: {
-        placement: p.spawnRules.placement,
-        requireSky: p.spawnRules.requireSky,
-        maxLocalDensity: p.spawnRules.maxLocalDensity,
-        allowedBaseBlocks: [...p.spawnRules.allowedBaseBlocks],
-      },
-    })),
   };
 }
 
@@ -69,7 +47,7 @@ export function exportPaths(
         sourceNode.data.biomeId,
         targetNode.data.biomeId,
         d.climate,
-        d,
+        d.chunkRules,
       ));
       return;
     }
@@ -90,7 +68,7 @@ export function exportPaths(
         srcBiomeNode.data.biomeId,
         targetNode.data.biomeId,
         condC,
-        d,
+        d.chunkRules,
       ));
     }
     // Case 3: biome → condition — skip (connector only)

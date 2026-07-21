@@ -37,8 +37,6 @@ export interface Translations {
   "overview.paths": string;
   "overview.sourceBiomes": string;
   "overview.targetBiomes": string;
-  "overview.totalPlants": string;
-  "overview.uniquePlants": string;
   "overview.biomesOnCanvas": string;
   "overview.pathsList": string;
   "overview.plantsSuffix": string;
@@ -71,18 +69,6 @@ export interface Translations {
   "path.climateErrorTemp": string;
   "path.climateErrorDownfall": string;
   "path.chunkRules": string;
-  "path.consuming": string;
-  "path.consumingHint": string;
-  "path.maxPlantCount": string;
-  "path.maxPlantCountHint": string;
-  "path.queueFillFactor": string;
-  "path.queueHint": string;
-  "path.evalInterval": string;
-  "path.to": string;
-  "path.days": string;
-  "path.processingInterval": string;
-  "path.evalIntervalTicks": string;
-  "path.evalTicksHint": string;
   "path.positiveStep": string;
   "path.negativeStep": string;
   "path.plants": string;
@@ -103,6 +89,7 @@ export interface Translations {
   "plant.maxAgeTicks": string;
   "plant.spawnRules": string;
   "plant.spawnSummary": string;
+  "plant.weightOnly": string;
 
   // Spawn Rules
   "spawn.placement": string;
@@ -118,12 +105,8 @@ export interface Translations {
   "validation.priorityNegative": string;
   "validation.tempMinMax": string;
   "validation.downfallMinMax": string;
-  "validation.consumingNegative": string;
-  "validation.maxPlantPositive": string;
-  "validation.queueFactorMin": string;
-  "validation.plantsRequired": string;
-  "validation.plantIdRequired": string;
-  "validation.weightPositive": string;
+  "validation.positiveStep": string;
+  "validation.negativeStep": string;
   "validation.isolatedBiome": string;
 
   // Plant Quick Add
@@ -151,6 +134,10 @@ export interface Translations {
   // Error Boundary
   "error.title": string;
   "error.reload": string;
+
+  // Tabs
+  "tab.paths": string;
+  "tab.biomes": string;
 }
 
 const zh: Translations = {
@@ -186,8 +173,6 @@ const zh: Translations = {
   "overview.paths": "路径 (连线)",
   "overview.sourceBiomes": "源群系",
   "overview.targetBiomes": "目标群系",
-  "overview.totalPlants": "植物总数",
-  "overview.uniquePlants": "植物种类",
   "overview.biomesOnCanvas": "画布上的群系",
   "overview.pathsList": "路径列表",
   "overview.plantsSuffix": " 种植物",
@@ -218,20 +203,8 @@ const zh: Translations = {
   "path.climateErrorTemp": "⚠ 温度: min > max",
   "path.climateErrorDownfall": "⚠ 湿度: min > max",
   "path.chunkRules": "区块规则",
-  "path.consuming": "consuming",
-  "path.consumingHint": "维持消耗",
-  "path.maxPlantCount": "max_plant_count",
-  "path.maxPlantCountHint": "植物容量",
-  "path.queueFillFactor": "queue_fill_factor",
-  "path.queueHint": "队列: {size}",
-  "path.evalInterval": "评估间隔 (天)",
-  "path.to": "到",
-  "path.days": "天",
-  "path.processingInterval": "processing_interval_ticks",
-  "path.evalIntervalTicks": "evaluation_interval_ticks",
-  "path.evalTicksHint": "0=使用天数",
-  "path.positiveStep": "positive_progress_step",
-  "path.negativeStep": "negative_progress_step",
+  "path.positiveStep": "正向进度步长",
+  "path.negativeStep": "负向进度步长",
   "path.plants": "植物",
   "path.totalWeight": "总权重: {total}",
   "path.noPlants": "暂无植物，请添加。",
@@ -248,7 +221,8 @@ const zh: Translations = {
   "plant.category": "分类",
   "plant.maxAgeTicks": "最大寿命 (tick)",
   "plant.spawnRules": "生成规则",
-  "plant.spawnSummary": "{placement} / 需天空:{sky} / {blocks} 基底",
+  "plant.spawnSummary": "天空:{sky} / {blocks} 基底",
+  "plant.weightOnly": "仅权重",
 
   "spawn.placement": "放置方式",
   "spawn.density": "最大局部密度",
@@ -262,12 +236,8 @@ const zh: Translations = {
   "validation.priorityNegative": "priority 必须 >= 0",
   "validation.tempMinMax": "温度 min > max",
   "validation.downfallMinMax": "湿度 min > max",
-  "validation.consumingNegative": "consuming 必须 >= 0",
-  "validation.maxPlantPositive": "maxPlantCount 必须 > 0",
-  "validation.queueFactorMin": "queueFillFactor 必须 >= 1.0",
-  "validation.plantsRequired": "至少需要一种植物",
-  "validation.plantIdRequired": "植物 #{n}: plant_id 不能为空",
-  "validation.weightPositive": "植物 #{n}: weight 必须 > 0",
+  "validation.positiveStep": "positiveProgressStep 必须 > 0",
+  "validation.negativeStep": "negativeProgressStep 必须 > 0",
   "validation.isolatedBiome": "孤立的群系: {biome}",
 
   "plant.quickAdd": "快速添加植物",
@@ -291,6 +261,9 @@ const zh: Translations = {
 
   "error.title": "编辑器崩溃",
   "error.reload": "重新加载编辑器",
+
+  "tab.paths": "演替路径",
+  "tab.biomes": "群系规则",
 };
 
 const en: Translations = {
@@ -326,8 +299,6 @@ const en: Translations = {
   "overview.paths": "Paths (Edges)",
   "overview.sourceBiomes": "Source Biomes",
   "overview.targetBiomes": "Target Biomes",
-  "overview.totalPlants": "Total Plants",
-  "overview.uniquePlants": "Unique Plant Types",
   "overview.biomesOnCanvas": "Biomes on Canvas",
   "overview.pathsList": "Paths",
   "overview.plantsSuffix": " plants",
@@ -358,18 +329,6 @@ const en: Translations = {
   "path.climateErrorTemp": "⚠ Temperature: min > max",
   "path.climateErrorDownfall": "⚠ Downfall: min > max",
   "path.chunkRules": "Chunk Rules",
-  "path.consuming": "consuming",
-  "path.consumingHint": "maintenance cost",
-  "path.maxPlantCount": "max_plant_count",
-  "path.maxPlantCountHint": "plant capacity",
-  "path.queueFillFactor": "queue_fill_factor",
-  "path.queueHint": "queue: {size}",
-  "path.evalInterval": "Evaluation Interval (days)",
-  "path.to": "to",
-  "path.days": "days",
-  "path.processingInterval": "processing_interval_ticks",
-  "path.evalIntervalTicks": "evaluation_interval_ticks",
-  "path.evalTicksHint": "0=use days",
   "path.positiveStep": "positive_progress_step",
   "path.negativeStep": "negative_progress_step",
   "path.plants": "Plants",
@@ -388,7 +347,8 @@ const en: Translations = {
   "plant.category": "Category",
   "plant.maxAgeTicks": "Max Age (ticks)",
   "plant.spawnRules": "Spawn Rules",
-  "plant.spawnSummary": "{placement} / sky:{sky} / {blocks} bases",
+  "plant.spawnSummary": "sky:{sky} / {blocks} bases",
+  "plant.weightOnly": "weight only",
 
   "spawn.placement": "Placement",
   "spawn.density": "Max Local Density",
@@ -402,12 +362,8 @@ const en: Translations = {
   "validation.priorityNegative": "priority must be >= 0",
   "validation.tempMinMax": "temperature min > max",
   "validation.downfallMinMax": "downfall min > max",
-  "validation.consumingNegative": "consuming must be >= 0",
-  "validation.maxPlantPositive": "maxPlantCount must be > 0",
-  "validation.queueFactorMin": "queueFillFactor must be >= 1.0",
-  "validation.plantsRequired": "At least one plant is required",
-  "validation.plantIdRequired": "Plant #{n}: plant_id is required",
-  "validation.weightPositive": "Plant #{n}: weight must be > 0",
+  "validation.positiveStep": "positiveProgressStep must be > 0",
+  "validation.negativeStep": "negativeProgressStep must be > 0",
   "validation.isolatedBiome": "Isolated biome: {biome}",
 
   "plant.quickAdd": "Quick Add Plant",
@@ -431,6 +387,9 @@ const en: Translations = {
 
   "error.title": "Editor Crashed",
   "error.reload": "Reload Editor",
+
+  "tab.paths": "Succession Paths",
+  "tab.biomes": "Biome Rules",
 };
 
 export const translations: Record<Lang, Translations> = { zh, en };
